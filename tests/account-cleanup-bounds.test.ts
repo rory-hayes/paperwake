@@ -87,7 +87,9 @@ async function prepare(table:Table,count=101){
  // Model the small stale statistics seen after an emptied queue is refilled.
  // Only the dedicated test database is used. Earlier test counters remain locked
  // and unchanged while the synthetic candidates exercise the cleanup plan.
- await adminPool.query(`VACUUM ${table}`);
+ // Avoid VACUUM's optional ACCESS EXCLUSIVE truncation lock: the protection
+ // transaction holds ROW SHARE even when a fresh CI table has no prior rows.
+ await adminPool.query(`VACUUM (TRUNCATE FALSE) ${table}`);
  const [valid]=await insertRows(table,1,false);
  await adminPool.query(`ANALYZE ${table}`);
  const expired=await insertRows(table,count,true);
