@@ -23,4 +23,6 @@ Historical screenshots and deployment/account evidence are kept locally and excl
 
 The [local manifest receipt from 9 November](evidence/paperwake-release-manifest-2026-11-09.json) records its exact test count and scope limits. It is a dated local result, not a GitHub Actions or hosted-provider acceptance result.
 
+The [10 November GitHub CI receipt](evidence/paperwake-ci-2026-11-10.json) records 474 passing tests, production packaging, isolated runtime/decoder checks and the controlled managed restore drill at its exact source revision. Real hosted invoice acceptance, account delivery, payment collection and operational recovery remain separate evidence.
+
 Rendered browser acceptance, real-provider invoice tests, delivered account emails, Stripe payment/webhook lifecycle tests and hosted retention are separate evidence. See [the Week 1 record](PAPERWAKE-WEEK-ONE-EVIDENCE.md) for the distinction between completed and outstanding checks.

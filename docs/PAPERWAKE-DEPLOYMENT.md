@@ -47,7 +47,9 @@ For paid launch:
 
 ## Evidence status
 
-See `PAPERWAKE-WEEK-ONE-EVIDENCE.md`. Status must distinguish controlled tests, real-provider synthetic runs, browser checks and hosted checks. No source claims blanket invoice accuracy or support for unlisted formats.
+As of 10 November 2026, the hosted preview uses private invitations, preview mode and mock billing, with account-email delivery disabled. Its synthetic invoice browser workflow reached actual extraction, persisted corrections, explicit approval and verified CSV download. Readiness and worker authentication probes passed; scheduler installation and idle ticks do not yet prove scheduled recovery or retention. Live payments and email delivery are not configured.
+
+See [the verification record](PAPERWAKE-WEEK-ONE-EVIDENCE.md) for exact tested revisions and outstanding checks, and [the worker verification procedure](PAPERWAKE-HOSTED-WORKER-VERIFICATION.md) for the separate recovery/retention acceptance. Status must distinguish controlled tests, real-provider synthetic runs, browser checks and hosted checks. No source claims blanket invoice accuracy or support for unlisted formats.
 
 ## Private paid pilot and cost controls
 

@@ -1,0 +1,27 @@
+{
+  "kind": "github_ci_controlled_release_verification",
+  "date": "2026-11-10",
+  "runUrl": "https://github.com/rory-hayes/paperwake/actions/runs/42778974759",
+  "sourceRevision": "e6e97f49ef67127be9880065b5814e1e1cdb4405",
+  "result": "success",
+  "releaseTests": {
+    "tests": 474,
+    "pass": 474,
+    "fail": 0,
+    "skipped": 0,
+    "durationMs": 122003.959521
+  },
+  "typecheckAndProductionPackage": "passed",
+  "isolatedRuntimeAndDecoders": "passed",
+  "managedEncryptedRestore": {
+    "result": "passed",
+    "namedAssertions": 29,
+    "storage": "controlled transport",
+    "database": "dedicated temporary PostgreSQL 17 cluster"
+  },
+  "limitations": [
+    "Controlled extraction, email and billing providers; not live provider lifecycle acceptance",
+    "Controlled managed restore is not a restore of the deployed service or evidence of its backup schedule",
+    "Hosted browser, scheduled recovery, retention and commercial readiness are tracked separately"
+  ]
+}
