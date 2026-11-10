@@ -8,7 +8,7 @@ export type SignupTermsDependencies={signupPolicy?:()=>SignupPolicyInput|null};
 export const signupTermsEvidenceNotice='This record preserves the signup terms presented and the server-observed acceptance request. It does not verify the person’s identity, prove delivery of contractual information, record privacy consent, or establish payment or legal completeness.';
 const digest=(policy:SignupPolicyInput)=>createHash('sha256').update(canonicalSignupPolicy(policy),'utf8').digest('hex');
 const unavailable=()=>badRequest('Signup terms are temporarily unavailable. Please try again later.',503);
-/** No catalogue, environment switch or default policy enables this dormant seam. */
+/** Validate exact supplied content; this module never supplies default terms. */
 export function validateSignupPolicy(input:unknown):SignupPolicy{
  const parsed=signupPolicyInputSchema.safeParse(input);if(!parsed.success||Buffer.byteLength(canonicalSignupPolicy(parsed.data))>signupTermsPolicyMaxBytes)return unavailable();
  return {...parsed.data,sha256:digest(parsed.data)};

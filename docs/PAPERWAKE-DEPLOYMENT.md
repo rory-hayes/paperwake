@@ -55,6 +55,18 @@ See [the verification record](PAPERWAKE-WEEK-ONE-EVIDENCE.md) for exact tested r
 
 `PAPERWAKE_SIGNUP_INVITE_CODE` keeps new registration closed independently of preview billing. Configure it before disabling preview for the first paid pilots; existing-user sign-in remains available. Invalid configured codes fail closed. Never publish the code in frontend bundles or repository files.
 
+### Optional configured signup terms
+
+The default application now reads an explicit owner-supplied policy through [signup-policy-configuration.ts](../server/core/signup-policy-configuration.ts). Nothing is enabled until approved content is configured. Supply all three server variables together:
+
+- `PAPERWAKE_SIGNUP_POLICY_JSON`: one strict JSON object with `version`, `language`, `title`, `text`, `url` and `agreementText`; no extra fields. The URL must be HTTPS without credentials or a fragment.
+- `PAPERWAKE_SIGNUP_POLICY_VERSION`: the exact version in that object.
+- `PAPERWAKE_SIGNUP_POLICY_SHA256`: lowercase SHA-256 of `canonicalSignupPolicy(policy)` from [shared/signup-terms.ts](../shared/signup-terms.ts), binding every displayed field in its defined order. It is not the digest of the original JSON bytes or just the text.
+
+Both raw configuration JSON and canonical policy JSON must fit 16 KiB. All three variables absent leaves signup terms disabled for the existing private preview. Any present-but-empty, partial, malformed, oversized, version-mismatched or hash-mismatched configuration returns 503 for signup-terms status and registration; it never silently disables acceptance. Correct configuration uses the existing UI, current version/hash checks, encrypted verification-queue snapshot and persisted acceptance record. Policy changes do not rewrite earlier accepted records. There is no network policy fetch, bundled legal text or claim of legal completeness. Checkout terms remain a separate configuration.
+
+### Processing cost controls
+
 `PAPERWAKE_AI_TRIAL_MONTHLY_USD`, `PAPERWAKE_AI_PAID_MONTHLY_USD` and `PAPERWAKE_AI_GLOBAL_MONTHLY_USD` default to USD 2, 25 and 100 per UTC calendar month. Values are plain positive USD decimals with at most two decimal places. Trial/paid maximum is 1000; installation maximum is 10000. Each pending or unpriced provider attempt conservatively reserves USD 1, then settles only against verified token pricing. Unknown/failed attempts remain accounted for; deleting a document does not reset spend. This bounds this installation, not unrelated apps using the same API key.
 
 The cost guard may pause expensive or uncertain work before all page credits have been used. It is an operator safety stop, not an extra customer charge or proof of profitability. Investigate the cause and actual recorded costs; do not automatically raise limits or restart failed jobs. The pinned model/rate/output assumptions must be reviewed before changing the provider. See the economics note for measured costs and sampling limits.

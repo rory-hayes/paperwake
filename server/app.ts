@@ -26,6 +26,7 @@ import {emailVerificationStatus} from './core/email-verification.js';
 import {installationConfiguration} from './core/installation.js';
 import {registerOperationalHealth} from './core/operations.js';
 import type {SignupPolicyInput} from './core/signup-terms.js';
+import {configuredSignupPolicy} from './core/signup-policy-configuration.js';
 
 export async function buildApp(options: {rateLimitStore?: FastifyRateLimitStoreCtor;signupPolicy?:()=>SignupPolicyInput|null} = {}){
   await assertStorageRestoreReady(config.storageDir,process.env.STORAGE_DRIVER||'filesystem');
@@ -54,7 +55,7 @@ export async function buildApp(options: {rateLimitStore?: FastifyRateLimitStoreC
   app.get('/api/health',async()=>({status:'ok',name:'Paperwake',environment:previewEnabled()?'preview':config.production?'production':'local',revision:process.env.VERCEL_GIT_COMMIT_SHA||null,limits:{maxBytes:config.maxBytes,maxPages:config.maxPages,maxFiles:config.maxFiles}}));
   registerOperationalHealth(app);
   app.get('/api/config',async()=>({preview:previewEnabled(),inviteRequired:signupInviteRequired(),previewBillingMode:previewBillingMode(),hosted:!!process.env.VERCEL,passwordRecovery:accountEmailStatus(),emailVerification:emailVerificationStatus(),publicService:installationConfiguration().publicDetails}));
-  await registerCore(app,{signupPolicy:options.signupPolicy});await registerExports(app);await registerIntegrations(app);await registerProviders(app,{checkoutPolicy:()=>configuredCheckoutPolicy()});
+  await registerCore(app,{signupPolicy:options.signupPolicy??configuredSignupPolicy});await registerExports(app);await registerIntegrations(app);await registerProviders(app,{checkoutPolicy:()=>configuredCheckoutPolicy()});
   const dist=path.resolve('dist'),hasStaticFiles=existsSync(dist);
   if(hasStaticFiles){
     await app.register(staticFiles,{root:dist,prefix:'/',index:false});
