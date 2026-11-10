@@ -1,0 +1,63 @@
+{
+  "kind": "hosted_synthetic_boundary_acceptance",
+  "sourceRevision": "1592e3b15295c98c810032f8a61035103181bb17",
+  "revisionBasis": "root-held deployment during hosted acceptance",
+  "startedAt": "2026-11-10T08:27:49.376Z",
+  "finishedAt": "2026-11-10T08:28:18.167Z",
+  "finalMutationResponseAt": "2026-11-10T08:28:16.755Z",
+  "results": {
+    "checks": 52,
+    "pass": 52,
+    "fail": 0
+  },
+  "scope": "Synthetic hosted HTTP acceptance; no new extraction, settings, roles or deletions",
+  "duplicate": {
+    "before": {
+      "pages": 1,
+      "reservedPages": 0,
+      "remainingPages": 9,
+      "documents": 1,
+      "kind": "trial",
+      "limit": 10
+    },
+    "after": {
+      "pages": 1,
+      "reservedPages": 0,
+      "remainingPages": 9,
+      "documents": 1,
+      "kind": "trial",
+      "limit": 10
+    }
+  },
+  "invalidUpload": {
+    "before": {
+      "pages": 0,
+      "reservedPages": 0,
+      "remainingPages": 10,
+      "documents": 0,
+      "kind": "trial",
+      "limit": 10
+    },
+    "after": {
+      "pages": 0,
+      "reservedPages": 0,
+      "remainingPages": 10,
+      "documents": 0,
+      "kind": "trial",
+      "limit": 10
+    }
+  },
+  "covered": [
+    "cross-account document/original/download/extraction/export isolation",
+    "foreign workspace and upload target denial",
+    "anonymous access denial and public API bearer rejection",
+    "exact-duplicate signed-upload retry and finalization replay",
+    "invalid non-PDF source rejection with no usage changes",
+    "disabled launch routes"
+  ],
+  "limitations": [
+    "Does not exhaust the hosted trial; zero-remaining-page duplicate behavior is covered by the local guarded integration test.",
+    "Scheduled recovery and retention are separate phases and are not proved by these checks",
+    "Mock billing and disabled email delivery; no payment or account-email delivery acceptance"
+  ]
+}

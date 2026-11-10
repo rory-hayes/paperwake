@@ -1,0 +1,102 @@
+{
+  "kind": "hosted_synthetic_worker_recovery_and_retention",
+  "sourceRevision": "1592e3b15295c98c810032f8a61035103181bb17",
+  "result": "passed",
+  "scope": {
+    "syntheticOnly": true,
+    "seededExpiredLease": true,
+    "actualProcessKilled": false,
+    "manualWorkerWake": false
+  },
+  "correlationObservedVia": "Independent read-only Supabase SQL editor observations; screenshots retained privately",
+  "initialFixture": {
+    "documents": 1,
+    "runs": 0,
+    "pageDebits": 0,
+    "providerCalls": 0
+  },
+  "recovery": {
+    "preparedAt": "2026-11-10T08:33:26.826Z",
+    "cronStartedAt": "2026-11-10T08:34:00.111434Z",
+    "cronSucceeded": true,
+    "workerHttpAt": "2026-11-10T08:34:00.188504Z",
+    "workerHttpStatus": 202,
+    "workerTimedOut": false,
+    "manualWake": false,
+    "completedAt": "2026-11-10T08:34:11.866Z",
+    "jobState": "completed",
+    "jobAttempt": 2,
+    "leaseCleared": true,
+    "extractedValuesMatchFixture": true,
+    "providerCalls": 1,
+    "usageState": "reported_priced",
+    "estimatedUsd": "0.004400250"
+  },
+  "retention": {
+    "preparedAt": "2026-11-10T08:38:13.115Z",
+    "retentionDays": 30,
+    "backdatedOnlySyntheticDocumentDays": 31,
+    "cronStartedAt": "2026-11-10T08:39:00.020542Z",
+    "cronSucceeded": true,
+    "workerHttpAt": "2026-11-10T08:39:00.052415Z",
+    "workerHttpStatus": 202,
+    "workerTimedOut": false,
+    "manualWake": false,
+    "completedAt": "2026-11-10T08:39:04.229Z",
+    "artifactsBefore": {
+      "documents": 1,
+      "runs": 1,
+      "corrections": 0,
+      "approvals": 0,
+      "exports": 0
+    },
+    "artifactsAfter": {
+      "documents": 0,
+      "runs": 0,
+      "deletion_intents": 0
+    },
+    "authenticatedOriginalCheck": {
+      "status": 400,
+      "present": false,
+      "absenceCode": "NoSuchKey"
+    },
+    "unchangedLedger": {
+      "committedReservations": 1,
+      "committedPages": 1,
+      "reservedPages": 0,
+      "pageDebits": 1,
+      "aiAttempts": 1,
+      "unknownAttempts": 0,
+      "estimatedUsd": "0.004400250"
+    }
+  },
+  "originalDemoReadback": {
+    "observedAt": "2026-11-10T08:42:12.965Z",
+    "checks": {
+      "healthHealthy": true,
+      "expectedRevision": true,
+      "ready": true,
+      "originalInvoiceApproved": true,
+      "sourceUnchanged": true,
+      "csvUnchanged": true,
+      "usageUnchanged": true
+    },
+    "usageBalance": {
+      "pages": 1,
+      "reservedPages": 0,
+      "remainingPages": 9,
+      "documents": 1,
+      "kind": "trial",
+      "limit": 10
+    },
+    "newProviderCalls": 0,
+    "newAccounts": 0
+  },
+  "limitations": [
+    "Simulated persisted expired-lease state; no running process was killed",
+    "One synthetic fixture and one real priced provider response; not all failure modes or invoice layouts",
+    "Before retention only the document, one extraction run and its original existed; absent corrections, approvals and exports were not deletion-tested",
+    "Provider cost is a reported-token pricing estimate, not a settled invoice",
+    "Not proof of hosted backup restoration, email delivery, live payments, configured owner-approved terms or paid-launch readiness"
+  ]
+}

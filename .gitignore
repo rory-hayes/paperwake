@@ -22,6 +22,8 @@ dist/
 !/docs/evidence/paperwake-release-manifest-2026-11-09.json
 !/docs/evidence/paperwake-ci-2026-11-10.json
 !/docs/evidence/paperwake-ci-signup-policy-2026-11-10.json
+!/docs/evidence/paperwake-hosted-boundaries-2026-11-10.json
+!/docs/evidence/paperwake-hosted-worker-2026-11-10.json
 .local/
 .vercel/
 coverage/

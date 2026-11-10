@@ -1,6 +1,16 @@
-# Hosted worker acceptance — prepared, not executed
+# Hosted worker acceptance — verified synthetic run
 
-Target: `https://paperwake-gamma.vercel.app`; private schema `paperwake`. The initial reviewed deployment for this procedure is `ee633b6`; always pass the actual deployed commit to the probe. This procedure prepares synthetic acceptance only. It does not grant permission to change platform functions, database roles, unrelated data or billing.
+Target: `https://paperwake-gamma.vercel.app`; private schema `paperwake`. The owner-authorized run completed on 10 November 2026 at revision `1592e3b15295c98c810032f8a61035103181bb17`. Always verify the actual deployed commit before any later procedure. This document is not permission to change platform functions, database roles, unrelated data or billing.
+
+## Executed result and precise scope
+
+The [sanitized combined receipt](evidence/paperwake-hosted-worker-2026-11-10.json) records the passed application-state checks and independently observed scheduler/HTTP correlation. The bounded fixture began with one synthetic document, no extraction run and zero page/AI usage. A private acceptance harness seeded an expired job lease; it did not kill a running process. After waiting out earlier invocations, cron recovered the job at attempt two without a manual wake. Exactly one priced provider request produced one run and one page debit, at an estimated USD 0.004400250.
+
+Retention then backdated only that document by 31 days while keeping the 30-day retention setting. A separately correlated cron invocation removed the document, its one run and its original object; an authenticated check returned `NoSuchKey`. Page reservations/debits and the AI-attempt/cost record remained. No corrections, approvals or exports existed in this fixture, so their deletion was not demonstrated. Raw receipts and correlation screenshots stay private; no account identifiers or secrets are published.
+
+A final read-only check verified that the earlier approved demo invoice, its original PDF and approved CSV were unchanged, including byte comparisons and its one-page usage balance. The deletion evidence is limited to the disposable fixture.
+
+The manual SQL preparation template below starts from a previously completed upload and would add a second run/debit. It is an alternative procedure, not the exact initialization used in the accepted one-request fixture. Its guard conditions remain useful; do not read its expected counts as the measured result. The recorded run does not establish live-service backup recovery, email delivery, payments, all interruption modes or general extraction accuracy.
 
 ## What each check proves
 
@@ -17,13 +27,13 @@ The worker endpoint drains installation-wide queues and runs maintenance; it has
 Supply `PAPERWAKE_PROBE_WORKER_SECRET` through the private execution environment. A monitor-only secret can instead be supplied as `PAPERWAKE_PROBE_MONITOR_SECRET` for checks without `--wake`. No secrets go into arguments, URLs, output, screenshots or this document. The script does not load environment files and fixes its destination to the owned host.
 
 ```sh
-node scripts/probe-paperwake-hosted.mjs --probe --expected-revision=ee633b6
+node scripts/probe-paperwake-hosted.mjs --probe --expected-revision=1592e3b
 ```
 
 After the unrelated-work preflight, test the authenticated endpoint once if needed:
 
 ```sh
-node scripts/probe-paperwake-hosted.mjs --probe --expected-revision=ee633b6 --wake --ack-global-worker
+node scripts/probe-paperwake-hosted.mjs --probe --expected-revision=1592e3b --wake --ack-global-worker
 ```
 
 Both commands verify unauthenticated worker and diagnostic requests return 401. They make no signup, billing or document mutations. The second command wakes the real global worker once. There is no automatic retry. A Vercel protection redirect/HTML response is a failure to resolve separately; never forward secrets to a redirected host.
@@ -83,7 +93,7 @@ BEGIN
  WHERE workspace_id=w AND allowance_key='trial' AND state IN ('reserved','committed');
  IF used_pages+1>(plan->>'monthlyPages')::integer THEN RAISE EXCEPTION 'No trial capacity for owned retry'; END IF;
  INSERT INTO paperwake.jobs(id,workspace_id,document_id,schema_version_id,config,state,attempts,max_attempts,available_at,lease_owner,lease_until)
- VALUES(j,w,d,source_job.schema_version_id,source_job.config,'processing',1,3,now(),'paperwake-owned-recovery-probe',now()-interval '1 minute');
+ VALUES(j,w,d,source_job.schema_version_id,source_job.config,'processing',1,2,now(),'paperwake-owned-recovery-probe',now()-interval '1 minute');
  INSERT INTO paperwake.usage_reservations(workspace_id,document_id,job_id,pages,allowance_key,allowance_kind)
  VALUES(w,d,j,1,'trial','trial');
  UPDATE paperwake.documents SET status='processing',error=NULL,updated_at=now() WHERE id=d AND workspace_id=w;
@@ -93,7 +103,7 @@ END $owned_probe$;
 COMMIT;
 ```
 
-Do **not** send a manual worker wake now: that would weaken proof of cron recovery. Poll only the exact job/document, every 15 seconds for at most five minutes. The expected sequence is expired `processing` → `queued` → `processing` → `completed`, although polling may miss transient states. Require terminal `completed`, `attempts=2`, no live lease, exactly one new extraction run for the new job, exactly one committed reservation/debit, and a priced AI attempt for `(job,attempt=2)`. This adds one synthetic page and one real provider request; the normal cost guard still applies. If the attempt fails or has unknown cost, stop and inspect; do not repeatedly resubmit or raise the budget.
+Do **not** send a manual worker wake now: that would weaken proof of cron recovery. The seed marks attempt one as synthetic and sets `max_attempts=2`, leaving at most one real provider attempt; a failure must not automatically admit a third attempt. Poll only the exact job/document, every 15 seconds for at most five minutes. The expected sequence is expired `processing` → `queued` → `processing` → `completed`, although polling may miss transient states. Require terminal `completed`, `attempts=2`, no live lease, exactly one new extraction run for the new job, exactly one committed reservation/debit, and a priced AI attempt for `(job,attempt=2)`. Success adds one synthetic page and one real provider request; the normal cost guard still applies. If the attempt fails or has unknown cost, stop and inspect; do not repeatedly resubmit or raise the budget.
 
 Read-only evidence queries (replace the exact IDs):
 
@@ -121,10 +131,10 @@ After successful recovery, record the synthetic document's **exact original stor
 
 Wait for cron using read-only observations. Require all of the following:
 
-- The exact document and its dependent extraction/correction/approval/export records are absent.
+- The exact document and every artifact type that existed in its recorded pre-retention snapshot are absent. An already-empty correction/approval/export table cannot prove deletion of that artifact type.
 - No outstanding `file_deletions` row remains for that workspace and exact original key. A missing document row alone is insufficient.
 - The exact key is absent from the private storage bucket; verify through authenticated object metadata/download or the owned Storage dashboard. An expired signed download link is not proof of deletion. Never delete an object manually to make acceptance pass.
-- Both already committed page reservations remain committed (their `document_id` can become null), and the corresponding AI attempt rows remain. Retention must not refund consumed pages or reset provider spend.
+- All previously committed page reservations/debits and corresponding AI attempt rows remain (their `document_id` can become null). The executed fixture had one committed page; the alternative two-extraction procedure would have two. Retention must not refund consumed pages or reset provider spend.
 
 Retention runs at most one eligible document per hosted maintenance invocation. A storage deletion retry can need a later cron wake. If the five-minute observation window expires, record pending state and inspect private diagnostics rather than mutating unrelated data.
 
