@@ -13,6 +13,7 @@ dist/
 !/docs/PAPERWAKE-TEST-SCOPE.md
 !/docs/PAPERWAKE-WEEK-ONE-EVIDENCE.md
 !/docs/PAPERWAKE-HOSTED-WORKER-VERIFICATION.md
+!/docs/PAPERWAKE-STRIPE-TEST-2026-11-10.md
 !/docs/PAPERWAKE-PUBLIC-REPOSITORY.md
 !/docs/BACKUP-RESTORE.md
 !/docs/UNIT-ECONOMICS.md
@@ -26,6 +27,8 @@ dist/
 !/docs/evidence/paperwake-hosted-worker-2026-11-10.json
 !/docs/evidence/paperwake-billing-release-2026-11-10.json
 !/docs/evidence/paperwake-hosted-restore-2026-11-10.json
+!/docs/evidence/paperwake-stripe-test-2026-11-10.json
+!/docs/evidence/paperwake-stripe-lifecycle-2026-11-10.json
 .local/
 .vercel/
 coverage/

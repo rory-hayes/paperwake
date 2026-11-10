@@ -1,0 +1,105 @@
+{
+  "scope": "Bounded actual hosted Stripe sandbox acceptance; no live payments",
+  "date": "2026-11-10",
+  "applicationOrigin": "https://paperwake-gamma.vercel.app",
+  "sourceRevision": "bf380c9c739e08bdc814bb072e4b0a4dca9659f1",
+  "applicationCodeRevision": "7dbbd644036874fa89571dc024f81c6dedae4962",
+  "deploymentId": "dpl_ENfvGRwLjsn27DJFryb6PGpZp35M",
+  "apiVersion": "2026-08-26.dahlia",
+  "configurationVerifiedAt": "2026-11-10T21:21:20.322Z",
+  "finalWorkspaceObservationAt": "2026-11-10T21:23:34.996Z",
+  "checks": {
+    "configuration": true,
+    "testCheckoutPaid": true,
+    "current500PageAllowance": true,
+    "exactStripePeriod": true,
+    "portalCancellationScheduledForPeriodEnd": true,
+    "allReceivedEventsCompleted": true,
+    "replayLeavesPlanUsageSubscriptionAndEventProcessingUnchanged": true
+  },
+  "offer": {
+    "currency": "EUR",
+    "monthlyAmountMinor": 4900,
+    "taxBehavior": "exclusive",
+    "processedPages": 500,
+    "evaluationPagesOnce": 10,
+    "automaticOverage": false,
+    "automaticTaxEnabled": false
+  },
+  "runtime": {
+    "preview": true,
+    "inviteRequired": true,
+    "billingMode": "test",
+    "mockBilling": false
+  },
+  "subscription": {
+    "status": "active",
+    "periodStart": "2026-11-10T21:09:36.000Z",
+    "periodEnd": "2026-12-10T21:09:36.000Z",
+    "cancelAt": "2026-12-10T21:09:36.000Z",
+    "cancelAtPeriodEnd": false
+  },
+  "usage": {
+    "kind": "subscription",
+    "available": true,
+    "startsAt": "2026-11-10T21:09:36.000Z",
+    "endsAt": "2026-12-10T21:09:36.000Z",
+    "limit": 500,
+    "pages": 0,
+    "reservedPages": 0,
+    "remainingPages": 500,
+    "documents": 0,
+    "needsReview": 0,
+    "processed": 0,
+    "failed": 0
+  },
+  "events": [
+    {
+      "type": "customer.subscription.updated",
+      "status": "completed",
+      "attempts": 1,
+      "hasError": false,
+      "workspaceBound": true
+    },
+    {
+      "type": "checkout.session.completed",
+      "status": "completed",
+      "attempts": 1,
+      "hasError": false,
+      "workspaceBound": true
+    },
+    {
+      "type": "invoice.paid",
+      "status": "completed",
+      "attempts": 2,
+      "hasError": false,
+      "workspaceBound": true
+    },
+    {
+      "type": "customer.subscription.created",
+      "status": "completed",
+      "attempts": 1,
+      "hasError": false,
+      "workspaceBound": true
+    }
+  ],
+  "replay": {
+    "source": "Stripe Dashboard resend of the actual completed Checkout event",
+    "deliveredAt": "2026-11-10T21:22:40Z",
+    "httpStatus": 202,
+    "response": {
+      "received": true,
+      "duplicate": true
+    },
+    "eventCountBefore": 4,
+    "eventCountAfter": 4
+  },
+  "limitations": [
+    "Synthetic disposable account and Stripe sandbox only; no real charge or live activation.",
+    "Terms acceptance was not configured or proved; no invented operator identity.",
+    "Renewal/reset, failed payment/recovery, terminal cancellation and tax calculation were not exercised.",
+    "No hosted invoice extraction was rerun for this environment-only billing setup.",
+    "Emails, commercially eligible hosting and recurring/offsite backup arrangements remain outstanding."
+  ],
+  "passed": true
+}

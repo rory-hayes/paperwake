@@ -1,0 +1,180 @@
+{
+  "date": "2026-11-10",
+  "scope": "Actual Stripe sandbox clock lifecycle with hosted Paperwake reconciliation",
+  "sourceRevision": "bf380c9c739e08bdc814bb072e4b0a4dca9659f1",
+  "deploymentId": "dpl_ENfvGRwLjsn27DJFryb6PGpZp35M",
+  "checks": {
+    "resumedWithoutChangingSubscription": true,
+    "newRenewalInvoicePaid": true,
+    "renewalPeriodReconciled": true,
+    "failedRenewalUnpaid": true,
+    "failureRemovesPaidPlan": true,
+    "sameInvoiceRecovered": true,
+    "recoveryReconciled": true,
+    "terminalCancellation": true,
+    "cancellationReconciled": true,
+    "noNewDocumentsOrUsage": true
+  },
+  "stages": {
+    "renewal": {
+      "observedAt": "2026-11-10T21:36:24.192Z",
+      "simulatedTime": "2026-12-10T22:09:36.000Z",
+      "subscriptionStatus": "active",
+      "periodStart": "2026-12-10T21:09:36.000Z",
+      "periodEnd": "2027-01-10T21:09:36.000Z",
+      "cancelAt": null,
+      "endedAt": null,
+      "invoice": {
+        "status": "paid",
+        "currency": "eur",
+        "amountPaid": 4900,
+        "amountRemaining": 0
+      },
+      "application": {
+        "plan": "standard",
+        "mode": "test",
+        "usage": {
+          "kind": "subscription",
+          "available": false,
+          "startsAt": "2026-12-10T21:09:36.000Z",
+          "endsAt": "2027-01-10T21:09:36.000Z",
+          "limit": 500,
+          "pages": 0,
+          "reservedPages": 0,
+          "remainingPages": 0,
+          "documents": 0,
+          "needsReview": 0,
+          "processed": 0,
+          "failed": 0
+        }
+      },
+      "receivedEvents": 7,
+      "allEventsCompleted": true
+    },
+    "failure": {
+      "observedAt": "2026-11-10T21:37:36.192Z",
+      "simulatedTime": "2027-01-10T22:09:36.000Z",
+      "subscriptionStatus": "past_due",
+      "periodStart": "2027-01-10T21:09:36.000Z",
+      "periodEnd": "2027-02-10T21:09:36.000Z",
+      "cancelAt": null,
+      "endedAt": null,
+      "invoice": {
+        "status": "open",
+        "currency": "eur",
+        "amountPaid": 0,
+        "amountRemaining": 4900
+      },
+      "application": {
+        "plan": "explore",
+        "mode": "test",
+        "usage": {
+          "kind": "trial",
+          "available": true,
+          "startsAt": null,
+          "endsAt": null,
+          "limit": 10,
+          "pages": 0,
+          "reservedPages": 0,
+          "remainingPages": 10,
+          "documents": 0,
+          "needsReview": 0,
+          "processed": 0,
+          "failed": 0
+        }
+      },
+      "receivedEvents": 11,
+      "allEventsCompleted": true
+    },
+    "recovery": {
+      "observedAt": "2026-11-10T21:38:40.469Z",
+      "simulatedTime": "2027-01-10T22:09:36.000Z",
+      "subscriptionStatus": "active",
+      "periodStart": "2027-01-10T21:09:36.000Z",
+      "periodEnd": "2027-02-10T21:09:36.000Z",
+      "cancelAt": null,
+      "endedAt": null,
+      "invoice": {
+        "status": "paid",
+        "currency": "eur",
+        "amountPaid": 4900,
+        "amountRemaining": 0
+      },
+      "application": {
+        "plan": "standard",
+        "mode": "test",
+        "usage": {
+          "kind": "subscription",
+          "available": false,
+          "startsAt": "2027-01-10T21:09:36.000Z",
+          "endsAt": "2027-02-10T21:09:36.000Z",
+          "limit": 500,
+          "pages": 0,
+          "reservedPages": 0,
+          "remainingPages": 0,
+          "documents": 0,
+          "needsReview": 0,
+          "processed": 0,
+          "failed": 0
+        }
+      },
+      "receivedEvents": 14,
+      "allEventsCompleted": true
+    },
+    "cancellation": {
+      "observedAt": "2026-11-10T21:40:13.550Z",
+      "simulatedTime": "2027-02-10T21:09:37.000Z",
+      "subscriptionStatus": "canceled",
+      "periodStart": "2027-01-10T21:09:36.000Z",
+      "periodEnd": "2027-02-10T21:09:36.000Z",
+      "cancelAt": "2027-02-10T21:09:36.000Z",
+      "endedAt": "2027-02-10T21:09:36.000Z",
+      "invoice": {
+        "status": "paid",
+        "currency": "eur",
+        "amountPaid": 4900,
+        "amountRemaining": 0
+      },
+      "application": {
+        "plan": "explore",
+        "mode": "test",
+        "usage": {
+          "kind": "trial",
+          "available": true,
+          "startsAt": null,
+          "endsAt": null,
+          "limit": 10,
+          "pages": 0,
+          "reservedPages": 0,
+          "remainingPages": 10,
+          "documents": 0,
+          "needsReview": 0,
+          "processed": 0,
+          "failed": 0
+        }
+      },
+      "receivedEvents": 16,
+      "allEventsCompleted": true
+    }
+  },
+  "limitations": [
+    "No real charge, live activation, refund or customer outreach.",
+    "Zero consumed pages in this disposable fixture: period rollover is proved; spent-quota reset and preservation rely on existing controlled tests.",
+    "Stripe simulated time was advanced; database time and entitlements were not changed. Future paid periods correctly remained unavailable against real time.",
+    "One automatic failed collection and explicit same-invoice recovery were tested, not every retry, authentication, dispute, refund or tax scenario.",
+    "Approved terms and actual account-email delivery remain unverified."
+  ],
+  "passed": true,
+  "cleanup": {
+    "temporaryGlobalTestClockRemoved": true,
+    "existingDisposableClockPreserved": true,
+    "removedAt": "2026-11-10T21:40:51.006Z",
+    "deploymentId": "dpl_223TmN7E8e7wHa9HTbLQHAz79dBx",
+    "sourceRevision": "bf380c9c739e08bdc814bb072e4b0a4dca9659f1",
+    "readinessVerifiedAt": "2026-11-10T21:43:00.260Z",
+    "configurationChecksPassed": true,
+    "previewRemains": true,
+    "billingMode": "test",
+    "mockBilling": false
+  }
+}

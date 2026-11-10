@@ -38,7 +38,7 @@ Account verification and password recovery require a verified sender, `FOLIO_AUT
 
 ## Billing and deployment
 
-Paid checkout requires the matching Stripe mode/key, webhook signing secret and `STRIPE_PRICE_STANDARD` for EUR 49/month. Live mode also requires the approved account ID, cancellation-enabled portal configuration, exact HTTPS origin, and configured operator checkout terms. A signed provider event, followed by reconciliation against Stripe, updates the subscription and its billing-period allowance. Returning from Checkout alone grants no paid access.
+Checkout requires the matching Stripe mode/key, webhook signing secret, `STRIPE_PRICE_STANDARD` for EUR 49/month and an active cancellation-enabled `STRIPE_PORTAL_CONFIGURATION_ID` in both test and live modes. Live mode additionally requires the approved account ID, exact HTTPS origin and configured operator checkout terms; the private-preview Stripe test path also requires the approved account ID and exact HTTPS origin. A signed provider event, followed by reconciliation against Stripe, updates the subscription and its billing-period allowance. Returning from Checkout alone grants no paid access.
 
 `STRIPE_AUTOMATIC_TAX_ENABLED` is an explicit operator choice, off by default. Enabling it requires an exclusive-tax price and appropriate Stripe tax configuration. The repository does not assert the operator's VAT status or registrations. Test and mock billing are labelled and do not prove a live subscription.
 
