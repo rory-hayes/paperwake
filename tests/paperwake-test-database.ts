@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {isIP} from 'node:net';
 
 type DatabaseIdentity={db:string;schema:string;address:string|null};
+export const paperwakeTestDatabaseIdentityQuery='select current_database() db,current_schema() schema,host(inet_server_addr()) address,current_user role';
 /** Docker-published CI ports connect locally but PostgreSQL sees its bridge IP. */
 export function assertPaperwakeTestDatabaseIdentity(configured:{host:string;database:string},identity:DatabaseIdentity,environment:NodeJS.ProcessEnv=process.env){
  assert.equal(environment.NODE_ENV,'test','Use the Paperwake test runner.');
@@ -25,7 +26,7 @@ export async function assertPaperwakeTestDatabase(){
   const configuredDatabase=url?decodeURIComponent(url.pathname.slice(1)):pool.options.database;
   assert.ok(host.startsWith('/')||['127.0.0.1','localhost','::1','[::1]'].includes(host),'Fixture database must be local.');
   assert.ok(['paperwake_test','paperwake_ci'].includes(String(configuredDatabase)),'Fixtures require an explicitly named Paperwake test database.');
-  const {rows:[identity]}=await pool.query('select current_database() db,current_schema() schema,inet_server_addr()::text address,current_user role');
+  const {rows:[identity]}=await pool.query(paperwakeTestDatabaseIdentityQuery);
   assertPaperwakeTestDatabaseIdentity({host,database:String(configuredDatabase)},identity);
  }
  const {rows:[role]}=await appPool.query('select rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls from pg_roles where rolname=current_user');
