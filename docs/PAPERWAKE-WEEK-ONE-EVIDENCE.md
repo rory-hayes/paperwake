@@ -78,6 +78,18 @@ The owner-authorized synthetic worker run passed all phases at deployment `1592e
 
 This verifies one bounded synthetic expired-lease recovery and retention path, not every failure mode, an actual process-kill experiment, backup restoration of the live service or universal invoice accuracy. [The worker procedure](PAPERWAKE-HOSTED-WORKER-VERIFICATION.md) records the executed variant and its limits.
 
+### Billing boundary release and hosted readback
+
+Deployed application revision `7dbbd644036874fa89571dc024f81c6dedae4962` was verified on the stable preview at **19:06–19:07 UTC on 10 November**. Its [sanitized release receipt](evidence/paperwake-billing-release-2026-11-10.json) records the local, CI, migration and hosted checks separately.
+
+- Applied migration `049_paperwake_reservation_billing_mode.sql` to the hosted project and both isolated local databases. Hosted verification confirmed **40 applied migrations**, the new reservation billing-mode column, and unchanged denial of watchdog access to both runtime roles. No role or privilege changes were made.
+- New paid work must match the active billing mode. Workers check the saved reservation and live lease before source access and provider dispatch. Valid accepted paid work retains its original reservation and operation-bound paid AI cap after cancellation or renewal; unrelated trial work cannot borrow that grant.
+- Checkout now validates an active cancellation-enabled portal before creating billing state and requires explicit tax-exclusive pricing. Cancellation-only access remains available when signup pricing changes or is archived. These are controlled provider tests, not live Stripe acceptance.
+- Hosted health/readiness returned 200 with database, storage and restore gate OK. Unauthenticated worker/diagnostics requests returned 401; authorized read-only diagnostics showed empty queues.
+- The existing demo remained approved; its PDF and corrected CSV were byte-identical, and its usage remained unchanged. Private preview, mock billing and unconfigured signup policies remained in place. This readback created no accounts or extractions and did not wake the worker or call the AI provider.
+
+The earlier browser, scheduled recovery and retention evidence remains tied to its recorded revisions above; it was not rerun on this release. Healthy readiness does not establish an operational backup.
+
 ## Controlled automated checks
 
 Focused backend, usage, account and frontend tests cover concurrent fixed-invoice setup, invalid input rejection, per-workspace isolation, saved revision conflicts, exact decimals/identifiers, formula-safe CSV, upload ownership/hash binding, quotas, retry accounting and billing period handling. Provider and storage doubles used by those unit/integration tests are distinct from the real-provider browser check above.
@@ -87,6 +99,8 @@ The dated local invoice-release manifest passed **468 tests**, with zero failure
 [GitHub CI for `e6e97f4`](https://github.com/rory-hayes/paperwake/actions/runs/42778974759) completed successfully on 10 November: **474/474 release tests, zero failures or skips**, typecheck/production packaging, isolated runtime/decoder checks, and the managed encrypted backup/restore drill all passed. The [sanitized CI receipt](evidence/paperwake-ci-2026-11-10.json) records the exact revision and scope. The restore drill used its own temporary PostgreSQL cluster and controlled storage; it does not establish production backup scheduling or a restore from the live service.
 
 The subsequent [signup-policy release at `b0d5166`](https://github.com/rory-hayes/paperwake/actions/runs/42781567154) also passed the complete CI run: **480/480 tests, zero failures or skips**, production packaging, isolated runtime/decoder checks and all **29 named assertions** in the controlled managed restore drill. Its [separate sanitized receipt](evidence/paperwake-ci-signup-policy-2026-11-10.json) preserves the earlier release record. The six added tests cover the default application's configured signup policy, absent/invalid configuration, current acceptance and persisted/queued policy snapshots. This implements the runtime configuration path; no owner-approved terms were invented, installed or verified on the hosted app.
+
+The latest [billing boundary release at `7dbbd64`](https://github.com/rory-hayes/paperwake/actions/runs/42881516039) passed **498/498 tests, zero failures or skips**, locally and in CI. Typecheck, production packaging and isolated runtime/decoder checks passed in both environments. CI also passed all **29 controlled managed restore assertions**. Added coverage checks billing-mode isolation, reservation and lease authority, cancellation/renewal continuity, operation-bound AI budgets, cancellation portal validation and explicit tax-exclusive pricing. This remains controlled-provider and controlled-restore evidence, not actual Stripe lifecycle or deployed-service backup acceptance.
 
 ## In progress / not yet proved
 

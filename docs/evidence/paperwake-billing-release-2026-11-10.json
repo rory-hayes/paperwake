@@ -1,0 +1,74 @@
+{
+  "kind": "billing_boundary_release_verification",
+  "date": "2026-11-10",
+  "sourceRevision": "7dbbd644036874fa89571dc024f81c6dedae4962",
+  "result": "passed_with_launch_dependencies_outstanding",
+  "ci": {
+    "runUrl": "https://github.com/rory-hayes/paperwake/actions/runs/42881516039",
+    "conclusion": "success",
+    "releaseTests": { "tests": 498, "pass": 498, "fail": 0, "skipped": 0 },
+    "typecheckAndProductionPackage": "passed",
+    "isolatedRuntimeAndDecoders": "passed",
+    "managedEncryptedRestore": {
+      "result": "passed",
+      "namedAssertions": 29,
+      "database": "dedicated temporary PostgreSQL 17 cluster",
+      "storage": "controlled transport"
+    }
+  },
+  "localVerification": {
+    "releaseTests": { "tests": 498, "pass": 498, "fail": 0, "skipped": 0 },
+    "typecheckAndProductionPackage": "passed",
+    "isolatedRuntimeAndDecoders": "passed"
+  },
+  "hostedMigration": {
+    "latest": "049_paperwake_reservation_billing_mode.sql",
+    "appliedMigrations": 40,
+    "reservationBillingModeColumnPresent": true,
+    "runtimeWatchdogAccess": { "backend": false, "tenant": false },
+    "roleOrPrivilegeChanges": false
+  },
+  "hostedDeployment": {
+    "target": "https://paperwake-gamma.vercel.app",
+    "deploymentId": "dpl_AfB2RvK8UXiKAMg72LaC9tggjYqB",
+    "state": "READY",
+    "verifiedRevision": "7dbbd644036874fa89571dc024f81c6dedae4962",
+    "probeStartedAt": "2026-11-10T19:06:00.173Z",
+    "probeFinishedAt": "2026-11-10T19:06:02.857Z",
+    "livenessStatus": 200,
+    "readinessStatus": 200,
+    "readinessChecks": { "database": "ok", "storage": "ok", "restore": "ok" },
+    "unauthenticatedAccess": { "workerStatus": 401, "diagnosticsStatus": 401 },
+    "authenticatedDiagnosticsStatus": 200,
+    "allObservedQueuesEmpty": true,
+    "workerCompletionVerifiedByThisProbe": false
+  },
+  "hostedDemoReadback": {
+    "observedAt": "2026-11-10T19:07:11.459Z",
+    "privateInvitationPreview": true,
+    "billingMode": "mock",
+    "signupPolicyConfigured": false,
+    "existingDemoApproved": true,
+    "originalPdfByteIdentical": true,
+    "approvedCsvByteIdentical": true,
+    "usageUnchanged": true,
+    "newAccounts": 0,
+    "newExtractions": 0
+  },
+  "coverageAdded": [
+    "Current billing mode must match paid allowance and newly admitted paid reservations",
+    "Worker checks the durable reservation and current unexpired lease before source read and provider dispatch",
+    "Accepted paid work keeps its operation-bound paid AI cap across cancellation or renewal",
+    "Other trial operations cannot borrow a paid operation grant",
+    "Checkout validates an active cancellation-enabled portal before customer or session side effects",
+    "EUR 49 monthly signup price must explicitly exclude tax",
+    "Cancellation-only portals remain available when signup pricing is archived or changed"
+  ],
+  "limitations": [
+    "Controlled Stripe tests do not prove an actual configured account or external payment lifecycle",
+    "This release's hosted checks were read-only; scheduled recovery and retention proof belongs to the earlier recorded revision",
+    "Controlled restore and a healthy readiness gate do not prove a backup or restore of the deployed service",
+    "Delivered account email, real billing, owner-approved policies, commercial hosting and operational backup setup remain outstanding",
+    "Synthetic invoice success does not establish accuracy on a permissioned real customer corpus or full paid-allowance economics"
+  ]
+}
