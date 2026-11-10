@@ -33,17 +33,27 @@ Required runtime: `APP_ORIGIN`, `DATABASE_SCHEMA`, `DATABASE_ADMIN_ROLE`, `DATAB
 
 Migrations need a separate owner identity. Runtime URLs cannot run DDL. The generated SQL Editor bootstrap creates restricted roles and private schema in one transaction, then applies all current migrations. Inspect before applying; it refuses existing conflicting roles/schema. Follow-up migrations must use the existing-schema path, not recreate roles.
 
+Apply [migration 049](../migrations/049_paperwake_reservation_billing_mode.sql) before deploying the billing-mode-aware intake and worker. It adds the nullable `usage_reservations.billing_mode` column without changing roles or privileges. New paid reservations save their admitted mode; trial reservations remain null. Historical paid reservations with no saved mode fail closed and require operator review. Do not infer or backfill their original mode from the workspace's current plan.
+
 For a private acceptance deployment, set `FOLIO_PREVIEW_MODE=true`, a random `FOLIO_PREVIEW_INVITE_CODE` of at least 32 characters and an explicit preview billing mode. Mock billing is labelled test billing. Do not promote that configuration as paid-ready.
 
 For paid launch:
 
 - Disable preview/mock modes and require email verification.
 - Configure the verified transactional-email sender and test registration, verification and recovery delivery.
-- Configure the owner's Stripe account, a EUR 49/month recurring price for 500 pages, webhook signing secret and cancellation-enabled portal. Verify checkout, webhook reconciliation, cancellation and renewal in test mode before live configuration.
+- Configure the owner's Stripe account, an explicitly exclusive-tax EUR 49/month recurring price for 500 pages, webhook signing secret and cancellation-enabled portal. `STRIPE_PORTAL_CONFIGURATION_ID` is required in both test and live mode. Verify checkout, webhook reconciliation, cancellation and renewal in test mode before live configuration.
 - Supply actual operator/support details and reviewed payment/data-handling policies. `STRIPE_AUTOMATIC_TAX_ENABLED` is an explicit operator choice and requires the correct Stripe setup; code alone does not configure tax registration.
 - Install the reviewed conditional queue watchdog only after the authenticated worker endpoint is reachable. Prove recovery without relying on a browser remaining open, plus retention/deletion execution.
 - Repeat upload → real extraction → saved correction → approval → downloaded CSV on the deployed target. Prove cross-workspace access denial and failure/quota handling there.
 - Record deployed commit, configuration mode, evidence and remaining limitations. A successful build or healthy homepage is not end-to-end release proof.
+
+### Billing boundaries
+
+New paid work requires the workspace's billing mode to match the active mock/test/live environment. A worker verifies the saved reservation's workspace, job, document, page count, state and billing mode, plus its current unexpired lease, before reading the source and again before provider dispatch. Stale-mode or unknown-mode paid work is rejected without a page debit; existing usage history and the ten lifetime evaluation pages are preserved.
+
+Valid accepted paid work retains its original reservation across renewal or cancellation. Its exact processing operation can still use the paid AI cost cap after downgrade, within the workspace and global budgets; unrelated trial jobs cannot borrow that grant. A failed final authority check retains any already-recorded cost intent conservatively, even when no provider request is sent.
+
+Checkout requires an active EUR 49 monthly price with explicit `tax_behavior=exclusive`; inclusive, unspecified or missing behavior is rejected even with automatic tax disabled. It also retrieves and validates the active cancellation-enabled portal before creating billing state. Cancellation-only portals remain accessible to their bound existing customers when signup pricing is archived or changes; portals that offer subscription updates still validate the available price. These are implemented guards with controlled regression coverage, not evidence of a configured external Stripe account or successful payment collection.
 
 ## Evidence status
 

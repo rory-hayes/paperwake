@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {stripeConfiguration,assertStripeCustomerTestClock} from '../server/integrations/provider-policy.js';
 
-const environment={STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_controlled',STRIPE_WEBHOOK_SECRET:'whsec_controlled',STRIPE_PRICE_STANDARD:'price_standard',STRIPE_PRICE_TEAM:'price_team'};
+const environment={STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_controlled',STRIPE_WEBHOOK_SECRET:'whsec_controlled',STRIPE_PRICE_STANDARD:'price_standard',STRIPE_PRICE_TEAM:'price_team',STRIPE_PORTAL_CONFIGURATION_ID:'bpc_owned'};
 const clock='clock_OwnedSandbox123';
 
 test('sandbox clock configuration is optional, bounded and unavailable in live billing',()=>{

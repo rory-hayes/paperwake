@@ -11,14 +11,14 @@ import {buildApp} from '../server/app.js';
 import {config} from '../server/core/config.js';
 import {processOneCoreJob,setExtractionProvider} from '../server/core/worker.js';
 import {setStorageForTests,type PrivateStorage} from '../server/core/storage.js';
-import {readPageUsage} from '../server/core/usage-allowance.js';
+import {readPageUsage,activeBillingMode} from '../server/core/usage-allowance.js';
 
 const keys=['PAPERWAKE_AI_TRIAL_MONTHLY_USD','PAPERWAKE_AI_PAID_MONTHLY_USD','PAPERWAKE_AI_GLOBAL_MONTHLY_USD'] as const;
 const original=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
 const owned=new Set<string>(),users=new Set<string>();
 function budgets(trial='2',paid='25',global='10000'){for(const [index,key] of keys.entries())process.env[key]=[trial,paid,global][index];}
 function restore(){for(const key of keys)if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}
-async function workspace(plan='explore'){const id=randomUUID();owned.add(id);await adminPool.query('insert into workspaces(id,name,slug,plan) values($1,$2,$3,$4)',[id,'Owned Paperwake cost fixture',`cost-${id}`,JSON.stringify({id:plan})]);return id;}
+async function workspace(plan='explore',billingMode=activeBillingMode()){const id=randomUUID();owned.add(id);await adminPool.query('insert into workspaces(id,name,slug,plan) values($1,$2,$3,$4)',[id,'Owned Paperwake cost fixture',`cost-${id}`,JSON.stringify({id:plan,...(plan==='standard'?{billingMode}:{})})]);return id;}
 const observer=(workspaceId:string,operationId=randomUUID(),attempt=1)=>createAIUsageObserver({workspaceId,kind:'extraction',operationId,attempt});
 const read=async(id:string)=>(await adminPool.query('select * from ai_usage_attempts where id=$1',[id])).rows[0];
 function paused(reason:AIProcessingPaused['reason']){return (error:unknown)=>{assert.ok(error instanceof AIProcessingPaused);assert.equal(error.reason,reason);assert.equal(error.permanent,true);assert.match(error.message,/paused.*support/i);return true;};}
@@ -72,6 +72,19 @@ test('paid and trial workspaces use their own configured caps',async()=>{
  for(const id of [trial,paid]){const first=observer(id);await first.start();await first.finish();}
  await assert.rejects(observer(trial).start(),paused('workspace_budget'));
  const second=observer(paid);await second.start();await second.finish();await assert.rejects(observer(paid).start(),paused('workspace_budget'));
+});
+
+test('stale test or mock paid plans cannot borrow the live paid processing-cost cap',async()=>{
+ const previous={STRIPE_MODE:process.env.STRIPE_MODE,FOLIO_BILLING_MOCK:process.env.FOLIO_BILLING_MOCK};
+ try{
+  process.env.STRIPE_MODE='live';process.env.FOLIO_BILLING_MOCK='false';budgets('1','2');
+  for(const savedMode of ['test','mock',null] as const){
+   const id=await workspace('standard',savedMode),first=observer(id);await first.start();await first.finish();
+   await assert.rejects(observer(id).start(),paused('workspace_budget'));
+  }
+  const live=await workspace('standard','live');for(let i=0;i<2;i++){const attempt=observer(live);await attempt.start();await attempt.finish();}
+  await assert.rejects(observer(live).start(),paused('workspace_budget'));
+ }finally{for(const key of ['STRIPE_MODE','FOLIO_BILLING_MOCK'] as const)if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
 });
 
 test('only verified returned prices settle reservations; failed output remains priced and unknown attempts retain a dollar',async()=>{

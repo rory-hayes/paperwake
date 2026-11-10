@@ -19,8 +19,8 @@ after(closeDatabase);
 
 async function legacyBilling(context:TestContext){
  const original=Object.fromEntries(environmentKeys.map(key=>[key,process.env[key]]));
- Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_synthetic_case_fixture',STRIPE_WEBHOOK_SECRET:'whsec_synthetic_case_fixture',STRIPE_PRICE_STANDARD:'price_synthetic_standard',STRIPE_PRICE_TEAM:'price_synthetic_team',FOLIO_BILLING_MOCK:'false',FOLIO_PREVIEW_MODE:'false'});
- delete process.env.STRIPE_ACCOUNT_ID;delete process.env.STRIPE_PORTAL_CONFIGURATION_ID;
+ Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_synthetic_case_fixture',STRIPE_WEBHOOK_SECRET:'whsec_synthetic_case_fixture',STRIPE_PRICE_STANDARD:'price_synthetic_standard',STRIPE_PRICE_TEAM:'price_synthetic_team',STRIPE_PORTAL_CONFIGURATION_ID:'bpc_case',FOLIO_BILLING_MOCK:'false',FOLIO_PREVIEW_MODE:'false'});
+ delete process.env.STRIPE_ACCOUNT_ID;
  context.after(()=>{for(const key of environmentKeys){if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}});
  const customer={id:'cus_owned_case_fixture',livemode:false,deleted:false,metadata:{folio_workspace:workspace as unknown}};
  const session={id:'cs_owned_case_fixture',livemode:false,status:'open',customer:customer.id,client_reference_id:workspace as unknown,url:'https://checkout.stripe.com/c/pay/synthetic-case-fixture'};
@@ -51,11 +51,11 @@ async function legacyBilling(context:TestContext){
  }
  context.mock.method(globalThis,'fetch',async()=>{throw new Error('Network is prohibited in the controlled billing fixture');});
  const client={
-  prices:{retrieve:async(id:string)=>{calls.push('price-read');const plan=PLANS.find(p=>p.id==='standard')!;return {id,livemode:false,active:true,currency:'eur',unit_amount:plan.monthlyPrice*100,recurring:{interval:'month',interval_count:1,usage_type:'licensed'},billing_scheme:'per_unit',transform_quantity:null};}},
+  prices:{retrieve:async(id:string)=>{calls.push('price-read');const plan=PLANS.find(p=>p.id==='standard')!;return {id,livemode:false,active:true,currency:'eur',tax_behavior:'exclusive',unit_amount:plan.monthlyPrice*100,recurring:{interval:'month',interval_count:1,usage_type:'licensed'},billing_scheme:'per_unit',transform_quantity:null};}},
   customers:{retrieve:async(id:string)=>{assert.equal(id,customer.id);calls.push('customer-read');return customer;},create:async()=>{calls.push('customer-create');throw new Error('Must reuse the legacy customer');}},
   subscriptions:{list:async(input:{customer:string})=>{assert.equal(input.customer,customer.id);calls.push('subscriptions-read');return {data:[],has_more:false};}},
   checkout:{sessions:{retrieve:async(id:string)=>{assert.equal(id,session.id);calls.push('checkout-read');return session;},create:async(input:unknown,options:unknown)=>{calls.push('checkout-create');assert.equal(replay.enabled,true,'Must reuse the existing legacy Checkout');assert.deepEqual(input,priorParams);assert.deepEqual(options,{idempotencyKey:`folio-checkout:${requestId}`});return session;},expire:async()=>{calls.push('checkout-expire');throw new Error('Must preserve the legacy Checkout');}}},
-  billingPortal:{sessions:{create:async(input:{customer:string;return_url:string})=>{assert.deepEqual(input,{customer:customer.id,return_url:`${config.origin}/app/settings?tab=billing`});calls.push('portal-create');return {customer:customer.id,livemode:false,url:'https://billing.stripe.com/p/session/synthetic-case-fixture'};}}},
+  billingPortal:{configurations:{retrieve:async(id:string)=>{assert.equal(id,'bpc_case');return {id,livemode:false,active:true,features:{subscription_cancel:{enabled:true},subscription_update:{enabled:false}}};}},sessions:{create:async(input:{customer:string;return_url:string})=>{assert.deepEqual(input,{customer:customer.id,return_url:`${config.origin}/app/settings?tab=billing`,configuration:'bpc_case'});calls.push('portal-create');return {customer:customer.id,livemode:false,url:'https://billing.stripe.com/p/session/synthetic-case-fixture'};}}},
  } as unknown as Stripe;
  const app=Fastify({logger:false});await app.register(cookie);await registerProviders(app,{stripeClient:()=>client});
  context.after(()=>app.close());

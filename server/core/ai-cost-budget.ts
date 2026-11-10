@@ -1,5 +1,7 @@
 import type {QueryResult} from 'pg';
 import {openAIExtraction} from './openai-provider.js';
+import {activeBillingMode} from './usage-allowance.js';
+import type {AIUsageKind} from '../../shared/ai-usage.js';
 
 /** Current pinned model: 400k context, at most 16k output, no tools. At the
  * checked-in $0.75/$4.50 rates, even 400k input + 16k output costs <$0.40.
@@ -24,7 +26,7 @@ type Client={query:(sql:string,values?:unknown[])=>Promise<QueryResult>};
 /** Runs in the SAME transaction as dispatch intent insertion. There is no
  * customer-controlled reset: jobs/documents may disappear; these rows remain.
  * Backend policies are required to see the installation-wide ledger. */
-export async function assertAIDispatchBudget(client:Client,workspaceId:string){
+export async function assertAIDispatchBudget(client:Client,workspaceId:string,operation:{kind:AIUsageKind;operationId:string;attempt:number}){
  const limits=configuredAICostBudgets(),policy=aiCostBudgetPolicy;
  // Refuse a future provider/configuration change until its reservation bound is
  // reviewed explicitly. There are no configurable models, tools or endpoints.
@@ -41,10 +43,21 @@ export async function assertAIDispatchBudget(client:Client,workspaceId:string){
   ), totals as (
    select coalesce(sum(reserved_cost),0) as global_cost,
     coalesce(sum(reserved_cost) filter(where workspace_id=$1),0) as workspace_cost from charges
+  ), dispatch_grant as (
+   -- An accepted paid operation retains its original cost cap after downgrade.
+   -- Bind every fact to this exact dispatch; a workspace-level reservation is
+   -- not authority for another job, a trial, a stale attempt or another mode.
+   select exists(select 1 from usage_reservations r
+    join jobs j on j.id=r.job_id and j.workspace_id=r.workspace_id
+    join documents d on d.id=j.document_id and d.workspace_id=j.workspace_id
+    where $14::text='extraction' and j.id=$15::uuid and j.attempts=$16::integer and j.workspace_id=$1
+     and j.state='processing' and j.lease_owner is not null and j.lease_until>clock_timestamp()
+     and r.state='reserved' and r.allowance_kind='subscription' and r.billing_mode=$13::text
+     and r.document_id=j.document_id and r.pages=d.page_count and r.pages>0) as paid
   ) select w.id as workspace_id,
    totals.global_cost+$12::numeric<=$4::numeric as global_allowed,
-   totals.workspace_cost+$12::numeric<=case when w.plan->>'id'='standard' then $3::numeric else $2::numeric end as workspace_allowed
-  from workspaces w cross join totals where w.id=$1`,[workspaceId,limits.trialUsd,limits.paidUsd,limits.globalUsd,policy.model,policy.pricingBasis,policy.maxInputTokens,policy.maxOutputTokens,policy.inputPerMillion,policy.cachedInputPerMillion,policy.outputPerMillion,policy.reserveUsd]);
+   totals.workspace_cost+$12::numeric<=case when (w.plan->>'id'='standard' and w.plan->>'billingMode'=$13::text) or dispatch_grant.paid then $3::numeric else $2::numeric end as workspace_allowed
+  from workspaces w cross join totals cross join dispatch_grant where w.id=$1`,[workspaceId,limits.trialUsd,limits.paidUsd,limits.globalUsd,policy.model,policy.pricingBasis,policy.maxInputTokens,policy.maxOutputTokens,policy.inputPerMillion,policy.cachedInputPerMillion,policy.outputPerMillion,policy.reserveUsd,activeBillingMode(),operation.kind,operation.operationId,operation.attempt]);
  if(!decision||typeof decision.global_allowed!=='boolean'||typeof decision.workspace_allowed!=='boolean')throw new AIProcessingPaused('ledger');
  if(!decision.global_allowed)throw new AIProcessingPaused('global_budget');
  if(!decision.workspace_allowed)throw new AIProcessingPaused('workspace_budget');

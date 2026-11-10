@@ -69,7 +69,7 @@ export function createAIUsageObserver(identity:{workspaceId:string;kind:AIUsageK
    if(starting||started||closed)throw new Error('AI usage dispatch already started or interrupted');
    starting=true;
    try{
-    try{await boundedWorkspace(identity.workspaceId,async c=>{await assertAIDispatchBudget(c,identity.workspaceId);await c.query('insert into ai_usage_attempts(id,workspace_id,kind,operation_id,attempt) values($1,$2,$3,$4,$5)',tuple);});}
+    try{await boundedWorkspace(identity.workspaceId,async c=>{await assertAIDispatchBudget(c,identity.workspaceId,identity);await c.query('insert into ai_usage_attempts(id,workspace_id,kind,operation_id,attempt) values($1,$2,$3,$4,$5)',tuple);});}
     catch(error){throw error instanceof AIProcessingPaused?error:new AIProcessingPaused('ledger');}
     started=true;
     if(closed)throw new Error('AI usage dispatch was interrupted');

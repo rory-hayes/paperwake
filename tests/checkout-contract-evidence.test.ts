@@ -19,23 +19,29 @@ import {validateCheckoutPolicy,reserveCheckoutContract,type CheckoutPolicyInput}
 import {configuredCheckoutPolicy,checkoutPolicyConfigurationDigest} from '../server/integrations/checkout-policy.js';
 
 type Account={user:{id:string};workspace:{id:string};cookie:string};
-const keys=['STRIPE_MODE','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STANDARD','STRIPE_ACCOUNT_ID','STRIPE_PORTAL_CONFIGURATION_ID','FOLIO_BILLING_MOCK','FOLIO_PREVIEW_MODE','RESEND_API_KEY','RESEND_INBOUND_ENABLED','FOLIO_REQUIRE_EMAIL_VERIFICATION'] as const;
+const keys=['STRIPE_MODE','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STANDARD','STRIPE_ACCOUNT_ID','STRIPE_PORTAL_CONFIGURATION_ID','STRIPE_AUTOMATIC_TAX_ENABLED','FOLIO_BILLING_MOCK','FOLIO_PREVIEW_MODE','RESEND_API_KEY','RESEND_INBOUND_ENABLED','FOLIO_REQUIRE_EMAIL_VERIFICATION'] as const;
 const original=Object.fromEntries(keys.map(key=>[key,process.env[key]])),originalOrigin=config.origin;
 const secret='whsec_owned_terms_fixture',accounts:Account[]=[],eventIds:string[]=[],apps:FastifyInstance[]=[];
 const customers=new Map<string,any>(),sessions=new Map<string,any>(),calls:{params:any;key:string}[]=[];
 const fixture:CheckoutPolicyInput={version:'synthetic-v1',language:'en-IE',title:'Synthetic test terms',text:'SYNTHETIC FIXTURE — not customer terms.\nPrice and cancellation text here is a controlled placeholder.\n<script>untrusted-looking text stays plain text</script>',url:'https://terms.example.test/policies/synthetic-v1',agreementText:'I accept these synthetic test terms.'};
 let app:FastifyInstance,policy:CheckoutPolicyInput|null=null,verified=false,networkCalls=0,loseResponse=false;
+let portalFailure=false,portalActive=true,portalCancellation=true,portalWrongMode=false,portalUpdates=false;
+let priceActive=true,priceAmount=4900,priceReads=0;
+let taxBehavior:Stripe.Price.TaxBehavior|'missing'='exclusive';
+const portalSessions:{customer:string;configuration:string}[]=[];
 let onCreate:((session:any,params:any)=>Promise<void>)|null=null;
-function reset(){policy=null;loseResponse=false;onCreate=null;config.origin='https://terms.example.test';Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_owned_terms_fixture',STRIPE_WEBHOOK_SECRET:secret,STRIPE_PRICE_STANDARD:'price_terms_standard',FOLIO_BILLING_MOCK:'false',FOLIO_PREVIEW_MODE:'false',FOLIO_REQUIRE_EMAIL_VERIFICATION:'false',RESEND_INBOUND_ENABLED:'false'});for(const key of ['STRIPE_ACCOUNT_ID','STRIPE_PORTAL_CONFIGURATION_ID','RESEND_API_KEY'])delete process.env[key];}
-const price=(id:string)=>({id,livemode:false,active:true,currency:'eur',unit_amount:4900,recurring:{interval:'month',interval_count:1,usage_type:'licensed'},billing_scheme:'per_unit',transform_quantity:null});
+function reset(){priceActive=true;priceAmount=4900;portalUpdates=false;portalFailure=false;portalActive=true;portalCancellation=true;portalWrongMode=false;taxBehavior='exclusive';policy=null;loseResponse=false;onCreate=null;config.origin='https://terms.example.test';Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_owned_terms_fixture',STRIPE_WEBHOOK_SECRET:secret,STRIPE_PRICE_STANDARD:'price_terms_standard',STRIPE_PORTAL_CONFIGURATION_ID:'bpc_terms',STRIPE_AUTOMATIC_TAX_ENABLED:'false',FOLIO_BILLING_MOCK:'false',FOLIO_PREVIEW_MODE:'false',FOLIO_REQUIRE_EMAIL_VERIFICATION:'false',RESEND_INBOUND_ENABLED:'false'});for(const key of ['STRIPE_ACCOUNT_ID','RESEND_API_KEY'])delete process.env[key];}
+const price=(id:string)=>({id,livemode:process.env.STRIPE_MODE==='live',active:priceActive,currency:'eur',...(taxBehavior==='missing'?{}:{tax_behavior:taxBehavior}),unit_amount:priceAmount,recurring:{interval:'month',interval_count:1,usage_type:'licensed'},billing_scheme:'per_unit',transform_quantity:null});
 const client={
- prices:{retrieve:async(id:string)=>price(id)},
- customers:{create:async(input:any)=>{const id=`cus_${input.metadata.folio_workspace}`;const customer={id,livemode:false,metadata:input.metadata};customers.set(id,customer);return customer;},retrieve:async(id:string)=>customers.get(id)},
+ accounts:{retrieve:async()=>({id:'acct_terms',charges_enabled:true,payouts_enabled:true,details_submitted:true})},
+ billingPortal:{configurations:{retrieve:async(id:string)=>{assert.equal(id,'bpc_terms');if(portalFailure)throw new Error('Synthetic unavailable portal');return {id,livemode:portalWrongMode?process.env.STRIPE_MODE!=='live':process.env.STRIPE_MODE==='live',active:portalActive,features:{subscription_cancel:{enabled:portalCancellation},subscription_update:{enabled:portalUpdates,default_allowed_updates:['price'],products:[{product:'prod_terms',prices:['price_terms_standard']}]}}};}},sessions:{create:async(input:{customer:string;configuration:string})=>{portalSessions.push(input);return {...input,livemode:process.env.STRIPE_MODE==='live',url:'https://billing.stripe.com/p/session/synthetic'};}}},
+ prices:{retrieve:async(id:string)=>{priceReads++;return price(id);}},
+ customers:{create:async(input:any)=>{const id=`cus_${input.metadata.folio_workspace}`;const customer={id,livemode:process.env.STRIPE_MODE==='live',metadata:input.metadata};customers.set(id,customer);return customer;},retrieve:async(id:string)=>customers.get(id)},
  subscriptions:{list:async()=>({data:[],has_more:false})},
  checkout:{sessions:{create:async(params:any,options:any)=>{
   calls.push({params:structuredClone(params),key:options.idempotencyKey});
   let session=sessions.get(options.idempotencyKey);
-  if(!session){session={...structuredClone(params),id:`cs_${randomUUID()}`,livemode:false,status:'open',consent:null,currency:'eur',amount_subtotal:price(params.line_items[0].price).unit_amount,url:'https://checkout.stripe.com/c/pay/synthetic',line_items:{data:[{quantity:1,price:price(params.line_items[0].price)}],has_more:false}};sessions.set(options.idempotencyKey,session);}
+  if(!session){session={...structuredClone(params),id:`cs_${randomUUID()}`,livemode:process.env.STRIPE_MODE==='live',status:'open',consent:null,currency:'eur',amount_subtotal:price(params.line_items[0].price).unit_amount,url:'https://checkout.stripe.com/c/pay/synthetic',line_items:{data:[{quantity:1,price:price(params.line_items[0].price)}],has_more:false}};sessions.set(options.idempotencyKey,session);}
   else assert.deepEqual(params,calls.find(call=>call.key===options.idempotencyKey)!.params,'A replay must preserve exact Stripe parameters');
   if(onCreate)await onCreate(session,params);
   if(loseResponse){loseResponse=false;throw new Error('Controlled lost response');}
@@ -72,6 +78,68 @@ test('absent policy callback retains legacy Checkout and mock behavior',async()=
  assert.deepEqual(Object.keys(calls.at(-1)!.params).sort(),['cancel_url','client_reference_id','customer','line_items','mode','success_url']);assert.equal((await rows(owner)).length,0);
  const list=(await request(owner,'GET','/api/billing/contracts',undefined,dormant)).json();assert.deepEqual(list,{captureEnabled:false,records:[],nextCursor:null,legacyCheckout:{mode:'test',state:'unknown'}});
  const empty=await signup(dormant),before=calls.length;process.env.FOLIO_BILLING_MOCK='true';assert.equal((await request(empty,'POST','/api/billing/checkout',{planId:'standard'},dormant)).statusCode,409);assert.equal(calls.length,before);assert.equal((await rows(empty)).length,0);
+});
+test('test and live Checkout reject an unavailable cancellation portal before any billing side effect',async()=>{
+ for(const mode of ['test','live']){
+  reset();process.env.STRIPE_MODE=mode;process.env.STRIPE_SECRET_KEY=`sk_${mode}_owned_terms_fixture`;
+  if(mode==='live'){process.env.STRIPE_ACCOUNT_ID='acct_terms';policy=fixture;}
+  const owner=await signup(),before=calls.length,customerCount=customers.size;
+  for(const fault of ['inactive','cancellation-disabled','wrong-mode','unavailable','missing-id']){
+   portalActive=fault!=='inactive';portalCancellation=fault!=='cancellation-disabled';portalWrongMode=fault==='wrong-mode';portalFailure=fault==='unavailable';
+   if(fault==='missing-id')delete process.env.STRIPE_PORTAL_CONFIGURATION_ID;
+   const response=await request(owner,'POST','/api/billing/checkout',{planId:'standard'});
+   assert.equal(response.statusCode,503,`${mode}/${fault}: ${response.body}`);
+   assert.equal(customers.size,customerCount,'No customer created before cancellation is usable');
+   assert.equal(calls.length,before,'No Checkout session created');assert.equal((await rows(owner)).length,0);
+   for(const table of ['subscriptions','billing_checkouts'])assert.equal((await adminPool.query(`SELECT count(*)::int n FROM ${table} WHERE workspace_id=$1`,[owner.workspace.id])).rows[0].n,0);
+  }
+  portalActive=true;portalCancellation=true;portalWrongMode=false;portalFailure=false;process.env.STRIPE_PORTAL_CONFIGURATION_ID='bpc_terms';
+  await create(owner);assert.equal(calls.length,before+1);
+  const portalBefore=portalSessions.length;portalCancellation=false;
+  assert.equal((await request(owner,'POST','/api/billing/portal',{})).statusCode,503);
+  assert.equal(portalSessions.length,portalBefore,'The portal endpoint reuses the same cancellation guard');
+  portalCancellation=true;assert.equal((await request(owner,'POST','/api/billing/portal',{})).statusCode,200);
+  assert.equal(portalSessions.at(-1)?.configuration,'bpc_terms');
+ }
+});
+test('exclusive price is required with automatic tax off or on, in both billing modes',async()=>{
+ for(const mode of ['test','live'])for(const automatic of ['false','true']){
+  reset();process.env.STRIPE_MODE=mode;process.env.STRIPE_SECRET_KEY=`sk_${mode}_owned_terms_fixture`;process.env.STRIPE_AUTOMATIC_TAX_ENABLED=automatic;
+  if(mode==='live'){process.env.STRIPE_ACCOUNT_ID='acct_terms';policy=fixture;}
+  const owner=await signup(),before=calls.length,customerCount=customers.size;
+  for(const behavior of ['inclusive','unspecified','missing'] as const){
+   taxBehavior=behavior;
+   assert.equal((await request(owner,'POST','/api/billing/checkout',{planId:'standard'})).statusCode,503,`${mode}/${automatic}/${behavior}`);
+   assert.equal(calls.length,before);assert.equal(customers.size,customerCount);assert.equal((await rows(owner)).length,0);
+  }
+  taxBehavior='exclusive';await create(owner);
+  assert.equal(calls.at(-1)!.params.automatic_tax?.enabled,automatic==='true'?true:undefined);
+ }
+});
+test('an existing customer can cancel after signup pricing changes, while Checkout and price updates stay blocked',async()=>{
+ for(const mode of ['test','live']){
+  reset();process.env.STRIPE_MODE=mode;process.env.STRIPE_SECRET_KEY=`sk_${mode}_owned_terms_fixture`;
+  if(mode==='live'){process.env.STRIPE_ACCOUNT_ID='acct_terms';policy=fixture;}
+  const owner=await signup(),checkout=await create(owner),checkoutCount=calls.length;
+  for(const change of ['archived','amount','inclusive'] as const){
+   priceActive=change!=='archived';priceAmount=change==='amount'?9900:4900;taxBehavior=change==='inclusive'?'inclusive':'exclusive';
+   const reads=priceReads,portalCount=portalSessions.length;
+   const cancellation=await request(owner,'POST','/api/billing/portal',{});
+   assert.equal(cancellation.statusCode,200,`${mode}/${change}: ${cancellation.body}`);
+   assert.equal(priceReads,reads,'Cancellation-only portals do not depend on the signup price lookup');
+   assert.equal(portalSessions.length,portalCount+1);
+   assert.equal(portalSessions.at(-1)!.customer,checkout.customer);
+   assert.equal(portalSessions.at(-1)!.configuration,'bpc_terms');
+   assert.equal((await request(owner,'POST','/api/billing/checkout',{planId:'standard'})).statusCode,503);
+   assert.equal(calls.length,checkoutCount,'Invalid pricing never creates or reuses Checkout');
+   portalUpdates=true;
+   assert.equal((await request(owner,'POST','/api/billing/portal',{})).statusCode,503,'A portal that can sell plan changes must still validate the price');
+   assert.equal(portalSessions.length,portalCount+1);
+   portalUpdates=false;
+  }
+  priceActive=true;priceAmount=4900;taxBehavior='exclusive';portalUpdates=true;
+  assert.equal((await request(owner,'POST','/api/billing/portal',{})).statusCode,200,'Validated price updates remain available');
+ }
 });
 test('policy bounds and unsafe configuration fail closed without creating a Checkout or evidence',async()=>{
  const owner=await signup(),before=calls.length;

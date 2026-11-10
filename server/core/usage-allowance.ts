@@ -1,11 +1,30 @@
 import type {PoolClient} from 'pg';
 import {badRequest} from './db.js';
+import {mockBillingEnabled} from '../integrations/mock-billing.js';
+import {stripeMode} from '../integrations/provider-policy.js';
 
 export type PageAllowance={kind:'trial'|'subscription';key:string;limit:number;startsAt:string|null;endsAt:string|null;available:boolean};
 export type PageUsage=PageAllowance&{pages:number;reservedPages:number;remainingPages:number};
 
+/** Resolve the running mode without treating malformed mock settings as Stripe. */
+export function activeBillingMode(environment:NodeJS.ProcessEnv=process.env):'mock'|'test'|'live'|null{
+ if(environment.FOLIO_BILLING_MOCK==='true')return mockBillingEnabled(environment)?'mock':null;
+ try{
+  const mode=stripeMode(environment);
+  return mode==='live'&&environment.FOLIO_PREVIEW_MODE==='true'?null:mode;
+ }catch{return null;}
+}
+
+/** Paid test/mock state never grants production capacity after a mode change. */
+export function planBillingModeAllowed(plan:Record<string,unknown>,environment:NodeJS.ProcessEnv=process.env):boolean{
+ if(plan.id==='explore')return true;
+ if(plan.id!=='standard')return false;
+ const mode=activeBillingMode(environment);
+ return mode!==null&&plan.billingMode===mode;
+}
+
 /** The server's persisted plan, never upload input, defines the allowance. */
-export function pageAllowance(plan:Record<string,unknown>,now=new Date()):PageAllowance{
+export function pageAllowance(plan:Record<string,unknown>,now=new Date(),environment:NodeJS.ProcessEnv=process.env):PageAllowance{
  const limit=Number(plan.monthlyPages);
  if(!Number.isSafeInteger(limit)||limit<0)throw new Error('Invalid page allowance configuration.');
  if(plan.id==='explore')return {kind:'trial',key:'trial',limit,startsAt:null,endsAt:null,available:true};
@@ -14,7 +33,7 @@ export function pageAllowance(plan:Record<string,unknown>,now=new Date()):PageAl
  const end=typeof plan.periodEnd==='string'?new Date(plan.periodEnd):new Date(NaN);
  const valid=Number.isFinite(start.getTime())&&Number.isFinite(end.getTime())&&end>start&&typeof plan.subscriptionId==='string';
  return {kind:'subscription',key:valid?`subscription:${plan.subscriptionId}:${start.toISOString()}`:'unavailable',limit,
-  startsAt:valid?start.toISOString():null,endsAt:valid?end.toISOString():null,available:valid&&now>=start&&now<end};
+  startsAt:valid?start.toISOString():null,endsAt:valid?end.toISOString():null,available:valid&&planBillingModeAllowed(plan,environment)&&now>=start&&now<end};
 }
 
 export async function readPageUsage(c:PoolClient,workspaceId:string,plan:Record<string,unknown>):Promise<PageUsage>{
@@ -32,13 +51,18 @@ export async function readPageUsage(c:PoolClient,workspaceId:string,plan:Record<
 export async function reservePageUsage(c:PoolClient,input:{workspaceId:string;documentId:string;jobId:string;pages:number;plan:Record<string,unknown>}){
  const {workspaceId,documentId,jobId,pages,plan}=input;
  if(!Number.isSafeInteger(pages)||pages<1)throw new Error('Invalid document page count.');
- const existing=(await c.query('select id,pages,document_id,state from usage_reservations where workspace_id=$1 and job_id=$2',[workspaceId,jobId])).rows[0];
- if(existing){if(existing.state==='released')throw new Error('Processing page reservation was released.');if(existing.pages!==pages||existing.document_id!==documentId)throw new Error('Usage reservation does not match the processing job.');return;}
+ const existing=(await c.query('select id,pages,document_id,state,allowance_kind,billing_mode from usage_reservations where workspace_id=$1 and job_id=$2',[workspaceId,jobId])).rows[0];
+ if(existing){
+  if(existing.state==='released')throw new Error('Processing page reservation was released.');
+  if(existing.pages!==pages||existing.document_id!==documentId)throw new Error('Usage reservation does not match the processing job.');
+  if(existing.allowance_kind==='subscription'&&(!existing.billing_mode||existing.billing_mode!==activeBillingMode()))badRequest('The billing mode for this processing reservation has changed. Please contact support.',503);
+  return;
+ }
  const usage=await readPageUsage(c,workspaceId,plan);
  if(!usage.available)badRequest('Your subscription allowance is awaiting a billing update. Please retry shortly or contact support.',503);
  if(pages>usage.remainingPages)badRequest(usage.kind==='trial'?'Your ten evaluation pages are used or reserved. Subscribe to process more invoices.':'Your page allowance is used or reserved for this billing period. No extra charge will be made.',429);
- await c.query(`insert into usage_reservations(workspace_id,document_id,job_id,pages,allowance_key,allowance_kind,period_start,period_end)
-  values($1,$2,$3,$4,$5,$6,$7,$8)`,[workspaceId,documentId,jobId,pages,usage.key,usage.kind,usage.startsAt,usage.endsAt]);
+ await c.query(`insert into usage_reservations(workspace_id,document_id,job_id,pages,allowance_key,allowance_kind,period_start,period_end,billing_mode)
+  values($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[workspaceId,documentId,jobId,pages,usage.key,usage.kind,usage.startsAt,usage.endsAt,usage.kind==='subscription'?plan.billingMode:null]);
 }
 
 /** Same transaction as the saved extraction candidate; fenced worker owns the job. */

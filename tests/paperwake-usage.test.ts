@@ -1,16 +1,22 @@
-import test,{after} from 'node:test';
+import test,{after,before,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {adminPool,closeDatabase,withWorkspace} from '../server/core/db.js';
-import {pageAllowance,readPageUsage,reservePageUsage,commitPageUsage,releasePageUsage} from '../server/core/usage-allowance.js';
+import {activeBillingMode,planBillingModeAllowed,pageAllowance,readPageUsage,reservePageUsage,commitPageUsage,releasePageUsage} from '../server/core/usage-allowance.js';
+import {assertPaperwakeTestDatabase} from './paperwake-test-database.js';
 import {PLANS} from '../shared/plans.js';
 import {stripeConfiguration,stripePriceMatches,stripeTaxParameters} from '../server/integrations/provider-policy.js';
 import type Stripe from 'stripe';
 import {reconcileStripeCustomer} from '../server/integrations/providers.js';
 
 const trial={id:'explore',monthlyPages:10};
-const paid=(start='2026-11-01T00:00:00.000Z',end='2026-12-01T00:00:00.000Z')=>({id:'standard',monthlyPages:500,subscriptionId:'sub_owned',periodStart:start,periodEnd:end});
+const paid=(start='2026-11-01T00:00:00.000Z',end='2026-12-01T00:00:00.000Z')=>({id:'standard',monthlyPages:500,billingMode:'test',subscriptionId:'sub_owned',periodStart:start,periodEnd:end});
 const workspaces:string[]=[];
+const modeKeys=['STRIPE_MODE','FOLIO_BILLING_MOCK','FOLIO_PREVIEW_MODE'] as const;
+const originalMode=Object.fromEntries(modeKeys.map(key=>[key,process.env[key]]));
+before(assertPaperwakeTestDatabase);
+beforeEach(()=>Object.assign(process.env,{STRIPE_MODE:'test',FOLIO_BILLING_MOCK:'false',FOLIO_PREVIEW_MODE:'false'}));
+after(()=>{for(const key of modeKeys){if(originalMode[key]===undefined)delete process.env[key];else process.env[key]=originalMode[key];}});
 after(async()=>{if(workspaces.length)await adminPool.query('delete from workspaces where id=any($1::uuid[])',[workspaces]);await closeDatabase();});
 async function fixture(){
  const id=randomUUID(),parser=randomUUID(),schema=randomUUID();workspaces.push(id);
@@ -37,6 +43,24 @@ test('trial is lifetime and paid allowance is bound to a verified subscription p
  assert.notEqual(pageAllowance(paid(),new Date('2026-11-15')).key,pageAllowance(paid('2026-12-01','2027-01-01'),new Date('2026-12-15')).key);
 });
 
+test('paid entitlement matches the active billing mode while trial stays independent',()=>{
+ const now=new Date('2026-11-15'),plan=paid();
+ for(const mode of ['test','live','mock'] as const){
+  const environment={NODE_ENV:'test',STRIPE_MODE:mode==='mock'?'test':mode,FOLIO_BILLING_MOCK:mode==='mock'?'true':'false'};
+  assert.equal(activeBillingMode(environment),mode);
+  for(const saved of ['test','live','mock',undefined]){
+   const result=pageAllowance({...plan,billingMode:saved},now,environment);
+   assert.equal(result.available,saved===mode,`${saved} plan in ${mode} runtime`);
+   assert.equal(result.key,pageAllowance(plan,now).key,'Mode rejection preserves the recorded allowance key');
+  }
+  assert.equal(pageAllowance(trial,now,environment).available,true);
+ }
+ for(const environment of [{STRIPE_MODE:'invalid'},{NODE_ENV:'production',FOLIO_BILLING_MOCK:'true'},{STRIPE_MODE:'live',FOLIO_PREVIEW_MODE:'true'}]){
+  assert.equal(activeBillingMode(environment),null);
+  assert.equal(planBillingModeAllowed({...plan,billingMode:'live'},environment),false);
+ }
+});
+
 test('automatic tax is explicit and malformed configuration fails closed',()=>{
  assert.deepEqual(stripeTaxParameters({}),{});
  assert.deepEqual(stripeTaxParameters({STRIPE_AUTOMATIC_TAX_ENABLED:'false'}),{});
@@ -46,11 +70,13 @@ test('automatic tax is explicit and malformed configuration fails closed',()=>{
 
 test('only the EUR49 monthly Paperwake price enables checkout; legacy Team cannot',()=>{
  assert.deepEqual(PLANS.map(p=>[p.id,p.monthlyPrice,p.monthlyPages]),[['explore',0,10],['standard',49,500]]);
- const settings=stripeConfiguration({STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',STRIPE_PRICE_STANDARD:'price_owned'});
- const price={id:'price_owned',livemode:false,active:true,currency:'eur',unit_amount:4900,recurring:{interval:'month',interval_count:1,usage_type:'licensed'}} as Stripe.Price;
+ const settings=stripeConfiguration({STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',STRIPE_PRICE_STANDARD:'price_owned',STRIPE_PORTAL_CONFIGURATION_ID:'bpc_owned'});
+ const price={id:'price_owned',livemode:false,active:true,currency:'eur',tax_behavior:'exclusive',unit_amount:4900,recurring:{interval:'month',interval_count:1,usage_type:'licensed'}} as Stripe.Price;
  assert.equal(stripePriceMatches(price,'standard',settings.prices,'test',true),true);
  assert.equal(stripePriceMatches({...price,unit_amount:1900},'standard',settings.prices,'test',true),false);
  assert.equal(stripePriceMatches(price,'team',settings.prices,'test',true),false);
+ for(const tax_behavior of ['inclusive','unspecified',undefined] as const)assert.equal(stripePriceMatches({...price,tax_behavior} as Stripe.Price,'standard',settings.prices,'test',true),false);
+ assert.throws(()=>stripeConfiguration({STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',STRIPE_PRICE_STANDARD:'price_owned'}),/PORTAL_CONFIGURATION_ID/);
 });
 
 test('reservation, retry and commit are atomic and debit only one usable extraction',async()=>{
@@ -105,16 +131,40 @@ test('paid renewal changes the allowance window without restoring already used e
  await assert.rejects(reserve(f,c,1,expired),/awaiting a billing update/);
 });
 
+test('switching test or mock billing to live denies new and replayed paid reservations without resetting history',async()=>{
+ for(const previousMode of ['test','mock'] as const){
+  const f=await fixture(),trialJob=await job(f),processed=await job(f),queued=await job(f),blocked=await job(f),now=Date.now();
+  process.env.FOLIO_BILLING_MOCK=previousMode==='mock'?'true':'false';process.env.STRIPE_MODE='test';
+  await reserve(f,trialJob,3);await withWorkspace(f.id,c=>commitPageUsage(c,f.id,trialJob.jobId));
+  const plan={...paid(new Date(now-86400000).toISOString(),new Date(now+86400000).toISOString()),billingMode:previousMode};
+  await reserve(f,processed,5,plan);await withWorkspace(f.id,c=>commitPageUsage(c,f.id,processed.jobId));
+  await reserve(f,queued,2,plan);
+  assert.equal((await adminPool.query('select billing_mode from usage_reservations where job_id=$1',[queued.jobId])).rows[0].billing_mode,previousMode);
+  const before=await withWorkspace(f.id,c=>readPageUsage(c,f.id,plan));
+  process.env.FOLIO_BILLING_MOCK='false';process.env.STRIPE_MODE='live';
+  const after=await withWorkspace(f.id,c=>readPageUsage(c,f.id,plan));
+  assert.equal(after.available,false);assert.equal(after.remainingPages,0);
+  assert.equal(after.key,before.key);assert.equal(after.pages,5);assert.equal(after.reservedPages,2);
+  await assert.rejects(reserve(f,blocked,1,plan),/awaiting a billing update/);
+  await assert.rejects(reserve(f,queued,2,plan),/billing mode.*changed/i);
+  assert.equal((await withWorkspace(f.id,c=>readPageUsage(c,f.id,trial))).remainingPages,7);
+  const live={...plan,billingMode:'live',subscriptionId:'sub_live_owned'};
+  await reserve(f,blocked,1,live);
+  assert.equal((await withWorkspace(f.id,c=>readPageUsage(c,f.id,live))).remainingPages,499);
+  assert.equal((await adminPool.query('select count(*)::int n from usage_ledger where workspace_id=$1',[f.id])).rows[0].n,2,'Mode changes do not modify prior debits');
+ }
+});
+
 
 test('controlled Stripe reconciliation persists item periods and revokes past-due allowance',async()=>{
- const keys=['STRIPE_MODE','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STANDARD','STRIPE_ACCOUNT_ID','STRIPE_TEST_CLOCK_ID','STRIPE_AUTOMATIC_TAX_ENABLED','FOLIO_BILLING_MOCK'] as const;
+ const keys=['STRIPE_MODE','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STANDARD','STRIPE_ACCOUNT_ID','STRIPE_PORTAL_CONFIGURATION_ID','STRIPE_TEST_CLOCK_ID','STRIPE_AUTOMATIC_TAX_ENABLED','FOLIO_BILLING_MOCK'] as const;
  const previous=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
  const f=await fixture(),customerId=`cus_${f.id.replaceAll('-','')}`,eventId=`evt_${randomUUID().replaceAll('-','')}`;
- const now=Math.floor(Date.now()/1000),item={quantity:1,current_period_start:now-3600,current_period_end:now+86400,price:{id:'price_owned',livemode:false,active:true,currency:'eur',unit_amount:4900,recurring:{interval:'month',interval_count:1,usage_type:'licensed'}}};
+ const now=Math.floor(Date.now()/1000),item={quantity:1,current_period_start:now-3600,current_period_end:now+86400,price:{id:'price_owned',livemode:false,active:true,currency:'eur',tax_behavior:'exclusive',unit_amount:4900,recurring:{interval:'month',interval_count:1,usage_type:'licensed'}}};
  let subscription={id:'sub_owned',customer:customerId,livemode:false,created:now,status:'active',items:{data:[item]}};
  const client={subscriptions:{list:async(input:{customer:string})=>{assert.equal(input.customer,customerId);return {data:[subscription],has_more:false};}}} as unknown as Stripe;
  try{
-  Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_owned_fixture',STRIPE_WEBHOOK_SECRET:'whsec_owned_fixture',STRIPE_PRICE_STANDARD:'price_owned',STRIPE_AUTOMATIC_TAX_ENABLED:'false',FOLIO_BILLING_MOCK:'false'});
+  Object.assign(process.env,{STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_owned_fixture',STRIPE_WEBHOOK_SECRET:'whsec_owned_fixture',STRIPE_PRICE_STANDARD:'price_owned',STRIPE_PORTAL_CONFIGURATION_ID:'bpc_owned',STRIPE_AUTOMATIC_TAX_ENABLED:'false',FOLIO_BILLING_MOCK:'false'});
   delete process.env.STRIPE_ACCOUNT_ID;delete process.env.STRIPE_TEST_CLOCK_ID;
   await adminPool.query("insert into subscriptions(workspace_id,billing_mode,customer_id) values($1,'test',$2)",[f.id,customerId]);
   await adminPool.query("insert into provider_events(id,provider,payload) values($1,'stripe','{}')",[`stripe:${eventId}`]);

@@ -44,6 +44,14 @@ async function verifyBillingAccount(client:Stripe,settings:BillingConfiguration,
  // Live activation flags do not gate sandbox Checkout; account identity still does.
  if(acceptPayments&&settings.mode==='live'&&(!account.charges_enabled||!account.payouts_enabled||!account.details_submitted))badRequest('The Stripe account is not ready to accept payments.',503);
 }
+/** Validate the actual cancellation route before offering a subscription. */
+async function verifyBillingPortal(client:Stripe,settings:BillingConfiguration){
+ try{
+  const configuration=await client.billingPortal.configurations.retrieve(settings.portalConfigurationId,{expand:['features.subscription_update.products']});
+  assertStripePortalConfiguration(configuration,settings.prices,settings.mode);
+  return configuration;
+ }catch{badRequest('The Stripe billing portal is unavailable or not configured for subscription cancellation.',503);}
+}
 async function verifyBillingCustomer(client:Stripe,customerId:string,workspaceId:string,mode:StripeMode,testClockId?:string){
  const customer=await client.customers.retrieve(customerId);
  if(customer.deleted)badRequest('The Stripe billing customer is no longer available.',409);
@@ -407,8 +415,8 @@ export async function registerProviders(app:FastifyInstance,dependencies:{stripe
   if(mode==='live'&&!checkoutPolicy())badRequest('Checkout terms must be configured before paid subscriptions are available.',503);
   await verifyBillingAccount(client,settings,true);
   const price=await client.prices.retrieve(priceId);
-  if(stripeTaxParameters().automatic_tax?.enabled&&price.tax_behavior!=='exclusive')badRequest('Automatic tax requires an exclusive-tax Paperwake price.',503);
   if(!stripePriceMatches(price,planId,settings.prices,mode,true))badRequest('Configured Stripe price does not match the Paperwake monthly plan.',503);
+  await verifyBillingPortal(client,settings);
   const reservation=await transaction(adminPool,async c=>{
    await c.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`billing:${actor.workspaceId}`]);
    let {rows:[subscription]}=await c.query('select * from subscriptions where workspace_id=$1 and billing_mode=$2 for update',[actor.workspaceId,mode]);
@@ -462,12 +470,11 @@ export async function registerProviders(app:FastifyInstance,dependencies:{stripe
   const local=await withWorkspace(actor.workspaceId,async c=>(await c.query('select customer_id from subscriptions where workspace_id=$1 and billing_mode=$2',[actor.workspaceId,mode])).rows[0]);
   if(!local?.customer_id)badRequest('No Stripe customer exists for this workspace in the selected billing mode.',409);
   await verifyBillingCustomer(client,local.customer_id,actor.workspaceId,mode,settings.testClockId);
-  if(settings.portalConfigurationId){
-   const configuration=await client.billingPortal.configurations.retrieve(settings.portalConfigurationId,{expand:['features.subscription_update.products']});
-   assertStripePortalConfiguration(configuration,settings.prices,mode);
-   for(const plan of ['standard'] as const){const id=settings.prices[plan];if(id&&!stripePriceMatches(await client.prices.retrieve(id),plan,settings.prices,mode,true))badRequest('Configured Stripe price does not match the Paperwake monthly plan.',503);}
-  }
-  const session=await client.billingPortal.sessions.create({customer:local.customer_id,return_url:`${config.origin}/app/settings?tab=billing`,...(settings.portalConfigurationId?{configuration:settings.portalConfigurationId}:{})});
+  const portal=await verifyBillingPortal(client,settings);
+  // Existing customers must still be able to cancel when signup pricing is
+  // archived or changed. Price availability matters only when offering updates.
+  if(portal.features.subscription_update.enabled)for(const plan of ['standard'] as const){const id=settings.prices[plan];if(id&&!stripePriceMatches(await client.prices.retrieve(id),plan,settings.prices,mode,true))badRequest('Configured Stripe price does not match the Paperwake monthly plan.',503);}
+  const session=await client.billingPortal.sessions.create({customer:local.customer_id,return_url:`${config.origin}/app/settings?tab=billing`,configuration:settings.portalConfigurationId});
   assertStripeMode(session,mode);
   if(session.customer!==local.customer_id)throw new Error('Stripe portal does not match this workspace.');
   return {url:session.url,mode};

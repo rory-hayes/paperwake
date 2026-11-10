@@ -47,7 +47,7 @@ export function stripeTaxParameters(environment:Record<string,string|undefined>=
  if(flag!==undefined&&flag!=='false'&&flag!=='true')throw new Error('STRIPE_AUTOMATIC_TAX_ENABLED must be true or false.');
  return flag==='true'?{automatic_tax:{enabled:true},customer_update:{address:'auto'}}:{};
 }
-export function stripeConfiguration(environment:Record<string,string|undefined>=process.env,origin=environment.APP_ORIGIN||'http://localhost'): {mode:StripeMode;key:string;prices:PriceMap;accountId?:string;portalConfigurationId?:string;testClockId?:string;webhookSecret:string} {
+export function stripeConfiguration(environment:Record<string,string|undefined>=process.env,origin=environment.APP_ORIGIN||'http://localhost'): {mode:StripeMode;key:string;prices:PriceMap;accountId?:string;portalConfigurationId:string;testClockId?:string;webhookSecret:string} {
  const mode=stripeMode(environment),key=requireStripeKey(environment.STRIPE_SECRET_KEY,mode);
  stripeTaxParameters(environment);
  const testClockId=environment.STRIPE_TEST_CLOCK_ID||undefined;
@@ -56,15 +56,16 @@ export function stripeConfiguration(environment:Record<string,string|undefined>=
  const ids=Object.values(prices).filter((value):value is string=>!!value);
  if(!ids.length||ids.some(id=>!/^price_[A-Za-z0-9_]+$/.test(id))||new Set(ids).size!==ids.length)throw new Error('Configure distinct Stripe price IDs for the supported plans.');
  if(!environment.STRIPE_WEBHOOK_SECRET?.startsWith('whsec_'))throw new Error('Configure the Stripe webhook signing secret for this billing mode.');
+ const portalConfigurationId=environment.STRIPE_PORTAL_CONFIGURATION_ID;
+ if(!portalConfigurationId||!/^bpc_[A-Za-z0-9]+$/.test(portalConfigurationId))throw new Error('Stripe billing requires STRIPE_PORTAL_CONFIGURATION_ID for subscription cancellation.');
  if(mode==='live'){
   if(environment.FOLIO_BILLING_MOCK==='true'||environment.FOLIO_PREVIEW_MODE==='true')throw new Error('Live Stripe billing is unavailable in mock or preview mode.');
   const url=new URL(origin);
   if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash||['localhost','127.0.0.1','::1','[::1]'].includes(url.hostname))throw new Error('Live Stripe billing requires the production HTTPS application origin.');
   if(!/^acct_[A-Za-z0-9]+$/.test(environment.STRIPE_ACCOUNT_ID||''))throw new Error('Live Stripe billing requires the approved STRIPE_ACCOUNT_ID.');
   if(!prices.standard)throw new Error('Live Stripe billing requires the approved Paperwake plan price.');
-  if(!/^bpc_[A-Za-z0-9]+$/.test(environment.STRIPE_PORTAL_CONFIGURATION_ID||''))throw new Error('Live Stripe billing requires STRIPE_PORTAL_CONFIGURATION_ID.');
  }
- return {mode,key,prices,accountId:environment.STRIPE_ACCOUNT_ID,portalConfigurationId:environment.STRIPE_PORTAL_CONFIGURATION_ID,...(testClockId?{testClockId}:{}),webhookSecret:environment.STRIPE_WEBHOOK_SECRET};
+ return {mode,key,prices,accountId:environment.STRIPE_ACCOUNT_ID,portalConfigurationId,...(testClockId?{testClockId}:{}),webhookSecret:environment.STRIPE_WEBHOOK_SECRET};
 }
 export function verifyStripePayload(raw:Buffer,signature:string,secret:string,mode:StripeMode='test') {
  const event=Stripe.webhooks.constructEvent(raw,signature,secret);
@@ -85,7 +86,9 @@ export function stripePriceMatches(price:Stripe.Price,planId:PaidPlanId,prices:P
  const plan=PLANS.find(p=>p.id===planId);
  if(!plan)return false;
  return price.id===prices[planId]&&price.livemode===(mode==='live')&&(!requireActive||price.active)
-  &&price.currency==='eur'&&price.unit_amount===plan.monthlyPrice*100
+  // Explicit exclusive pricing pins the advertised ex-VAT amount independently
+  // of Stripe account defaults, including when automatic tax is disabled.
+  &&price.currency==='eur'&&price.unit_amount===plan.monthlyPrice*100&&price.tax_behavior==='exclusive'
   &&price.recurring?.interval==='month'&&price.recurring.interval_count===1
   &&(!price.recurring.usage_type||price.recurring.usage_type==='licensed')
   &&(!price.billing_scheme||price.billing_scheme==='per_unit')&&!price.transform_quantity;

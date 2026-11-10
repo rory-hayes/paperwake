@@ -1,6 +1,7 @@
 import {invoiceSchema} from '../../shared/invoice.js';
 import {assertInvoicePdfBytes,assertInvoiceSource} from './invoice-policy.js';
 import {commitPageUsage,releasePageUsage} from './usage-allowance.js';
+import {assertReservedInvoiceDispatch} from './worker-reservation-policy.js';
 import {createAIUsageObserver} from './ai-usage.js';
 import {isDeepStrictEqual} from 'node:util';
 import {bankStatementWorkflow,bankStatementSchema,legacyBankStatementSchema} from '../../shared/bank-statement-preset.js';
@@ -107,8 +108,12 @@ if(!job)return false;
 const report=(phase:Parameters<typeof reportAttempt>[2])=>reportAttempt(job.id,job.attempts,phase);
 report({stage:'claimed'});
 let extractionFinished=false;
-const usageObserver=createAIUsageObserver({workspaceId:job.workspace_id,kind:'extraction',operationId:job.id,attempt:job.attempts});
+const verifyReservedAllowance=()=>withWorkspace(job.workspace_id,c=>assertReservedInvoiceDispatch(c,{workspaceId:job.workspace_id,jobId:job.id,documentId:job.document_id,leaseOwner:owner}));
+const usageObserver=createAIUsageObserver({workspaceId:job.workspace_id,kind:'extraction',operationId:job.id,attempt:job.attempts},verifyReservedAllowance);
 try{
+// Reject invalid admission before source reads or a provider call, then recheck
+// at the provider's existing dispatch boundary after recording its cost intent.
+await verifyReservedAllowance();
 const attempt=await extractWithDeadline(async signal=>{
  const data=await withWorkspace(job.workspace_id,async c=>{const doc=(await c.query('select * from documents where id=$1',[job.document_id])).rows[0];const schema=(await c.query('select schema from schema_versions where id=$1',[job.schema_version_id])).rows[0]?.schema;return {doc,schema};});
  if(!data.doc)return undefined;signal.throwIfAborted();

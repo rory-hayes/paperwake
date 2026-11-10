@@ -15,8 +15,8 @@ SET LOCAL statement_timeout='30s';
 
 -- Refuse a partial rollout: the predicate requires every current queue column.
 DO $paperwake_watchdog_schema$ BEGIN
- IF NOT EXISTS(SELECT 1 FROM paperwake.schema_migrations WHERE name='048_paperwake_retention.sql') THEN
-  RAISE EXCEPTION 'Apply the reviewed Paperwake migrations through 048 before installing this watchdog.';
+ IF NOT EXISTS(SELECT 1 FROM paperwake.schema_migrations WHERE name='049_paperwake_reservation_billing_mode.sql') THEN
+  RAISE EXCEPTION 'Apply the reviewed Paperwake migrations through 049 before installing this watchdog.';
  END IF;
 END $paperwake_watchdog_schema$;
 
