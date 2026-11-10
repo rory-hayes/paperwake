@@ -90,6 +90,17 @@ Deployed application revision `7dbbd644036874fa89571dc024f81c6dedae4962` was ver
 
 The earlier browser, scheduled recovery and retention evidence remains tied to its recorded revisions above; it was not rerun on this release. Healthy readiness does not establish an operational backup.
 
+### Actual hosted-source backup and inactive restore
+
+After explicit owner approval, the root agent captured the actual Paperwake database and private originals into an encrypted local archive, then restored and verified it in a fresh dedicated database on the existing local PostgreSQL 17 test server. This used a Unix socket; no new server cluster was created and no existing local database was modified. The [sanitized receipt](evidence/paperwake-hosted-restore-2026-11-10.json) distinguishes this from the controlled CI fixture drills.
+
+- Maintenance ran from **20:02:51 to 20:08:14 UTC on 10 November**. Only Paperwake's named worker schedule and two runtime connection limits were temporarily changed. Both runtime pooler connections returned the expected role-limit denial. Two idle runtime sessions were drained; all tracked writers and upload capabilities were absent, followed by a 310-second drain window exceeding the configured 300-second hosted function limit.
+- Full capture included **64 tables, 99 rows, 40 migrations, one original PDF and the integration-encryption key**. Two optional object references were already absent; no staging-exclusion option was used and no unreferenced objects were omitted.
+- The encrypted archive authenticated successfully. Restore and subsequent inactive verification passed at **20:08:48 UTC**, including binary table data, original-file bytes, permissions, row-level security, constraints and triggers. The pending restore marker remains; no restored application or worker was started or activated.
+- Both runtime connection limits and the original cron active state were restored exactly. Separate checks verified both application users could reconnect, health/readiness were 200, the original demo remained approved, and its PDF matched the previous byte hash. These checks observed source revision `991682f8fb667e92c1d305ecc538b8c8661a4814`. No new extraction or AI call was made.
+
+This proves a one-off recovery of the actual hosted synthetic dataset. The encrypted archive and recovery identity remain on this Mac; independent offsite storage, key custody, a backup schedule, retention and failure notifications remain outstanding. It does not prove a production failover, scale recovery or a recurring operational backup arrangement.
+
 ## Controlled automated checks
 
 Focused backend, usage, account and frontend tests cover concurrent fixed-invoice setup, invalid input rejection, per-workspace isolation, saved revision conflicts, exact decimals/identifiers, formula-safe CSV, upload ownership/hash binding, quotas, retry accounting and billing period handling. Provider and storage doubles used by those unit/integration tests are distinct from the real-provider browser check above.
@@ -108,7 +119,7 @@ The latest [billing boundary release at `7dbbd64`](https://github.com/rory-hayes
 - Stripe test checkout/webhooks/cancellation/renewal, then correctly configured live billing.
 - Actual operator/support/policy configuration; no fictional business identity or tax registrations supplied.
 - Commercially eligible hosting before paid pilots: the current Vercel account uses Hobby, which [Vercel limits to personal, non-commercial use](https://vercel.com/docs/plans/hobby). A suitable plan or hosting choice is required; no upgrade or purchase has been authorized or performed.
-- Operational backup scheduling and recovery evidence for the deployed service.
+- Operational backup scheduling, independent offsite storage/key custody, retention and failure notifications. The one-off deployed-source restore is now verified above.
 - Permissioned real customer samples, which the user will source.
 
 ## Release decision

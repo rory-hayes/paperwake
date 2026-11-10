@@ -25,6 +25,7 @@ dist/
 !/docs/evidence/paperwake-hosted-boundaries-2026-11-10.json
 !/docs/evidence/paperwake-hosted-worker-2026-11-10.json
 !/docs/evidence/paperwake-billing-release-2026-11-10.json
+!/docs/evidence/paperwake-hosted-restore-2026-11-10.json
 .local/
 .vercel/
 coverage/

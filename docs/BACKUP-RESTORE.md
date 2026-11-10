@@ -1,6 +1,8 @@
 # Paperwake backup and restore tools
 
-The inherited encrypted backup CLI is [scripts/backup.ts](../scripts/backup.ts). The current release checks its archive, storage and restore boundaries with controlled fixtures. Actual hosted backup scheduling, independent storage, retained recovery keys and an operational restore remain separate acceptance requirements. [Deployment status](PAPERWAKE-DEPLOYMENT.md) and [verification](PAPERWAKE-WEEK-ONE-EVIDENCE.md) record those limits.
+The inherited encrypted backup CLI is [scripts/backup.ts](../scripts/backup.ts). The current release checks its archive, storage and restore boundaries with controlled fixtures. On 10 November 2026, an owner-approved encrypted capture of the actual hosted Paperwake database/originals also passed restore and inactive byte verification: 64 tables, 99 rows, 40 migrations and one PDF. See the [hosted recovery receipt](evidence/paperwake-hosted-restore-2026-11-10.json). The target was a fresh database on the existing local PostgreSQL 17 test server, reached through a Unix socket; no restored application or worker was activated.
+
+Recurring backup scheduling, independent offsite storage/key custody, retention and failure notifications remain separate acceptance requirements. The one-off encrypted archive and recovery identity are currently on the same Mac. [Deployment status](PAPERWAKE-DEPLOYMENT.md) and [verification](PAPERWAKE-WEEK-ONE-EVIDENCE.md) record those limits.
 
 ## Verification commands
 

@@ -61,6 +61,8 @@ As of 10 November 2026, the hosted preview uses private invitations, preview mod
 
 See [the verification record](PAPERWAKE-WEEK-ONE-EVIDENCE.md) for exact tested revisions and outstanding checks, and [the worker verification procedure](PAPERWAKE-HOSTED-WORKER-VERIFICATION.md) for the separate recovery/retention acceptance. Status must distinguish controlled tests, real-provider synthetic runs, browser checks and hosted checks. No source claims blanket invoice accuracy or support for unlisted formats.
 
+The owner-approved hosted-source recovery drill subsequently passed at 20:08 UTC on 10 November. It captured and restored 64 tables, 99 rows, 40 migrations and one private PDF, including the integration-encryption key. The fresh local database passed inactive byte/permission verification; no restored services were activated. The hosted runtime limits and named cron schedule were restored exactly, and health, both runtime connections and the original approved PDF passed separate checks. [Recovery receipt](evidence/paperwake-hosted-restore-2026-11-10.json). Recurring backup scheduling, independent offsite storage/key custody, retention and failure notifications still remain open.
+
 ## Private paid pilot and cost controls
 
 `PAPERWAKE_SIGNUP_INVITE_CODE` keeps new registration closed independently of preview billing. Configure it before disabling preview for the first paid pilots; existing-user sign-in remains available. Invalid configured codes fail closed. Never publish the code in frontend bundles or repository files.

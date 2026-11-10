@@ -1,0 +1,70 @@
+{
+  "kind": "actual_hosted_source_encrypted_capture_and_inactive_local_restore",
+  "date": "2026-11-10",
+  "result": "passed",
+  "source": {
+    "application": "Paperwake",
+    "verifiedRevision": "991682f8fb667e92c1d305ecc538b8c8661a4814",
+    "configuration": "private preview; mock billing; synthetic application data"
+  },
+  "authorization": "Owner explicitly approved the maintenance window, encrypted local database/PDF capture and isolated inactive restore.",
+  "maintenance": {
+    "fencedAt": "2026-11-10T20:02:51.088Z",
+    "capturedAt": "2026-11-10T20:08:14.017Z",
+    "finishedAt": "2026-11-10T20:08:14.336Z",
+    "drainSeconds": 310,
+    "serviceSettingsRestored": true
+  },
+  "capture": {
+    "status": "backup_created",
+    "formatVersion": 1,
+    "mode": "quiesced-supabase",
+    "tables": 64,
+    "rows": 99,
+    "originals": 1,
+    "migrations": 40,
+    "payloadFiles": 66,
+    "payloadBytes": 29988,
+    "absentOptionalObjects": 2,
+    "omittedUnreferencedObjects": 0,
+    "ciphertextBytes": 96223,
+    "integrationEncryptionKeyIncluded": true,
+    "uploadStagingExclusionUsed": false
+  },
+  "restore": {
+    "verifiedAt": "2026-11-10T20:08:48.969Z",
+    "status": "restored_verified_inactive",
+    "destination": "Fresh dedicated database on the existing local PostgreSQL 17 test server; Unix socket connection",
+    "newServerCluster": false,
+    "binaryTableDataAndObjectBytesVerified": true,
+    "permissionsConstraintsTriggersAndRlsVerified": true,
+    "pendingMarkerRetained": true,
+    "applicationServicesStarted": false,
+    "activationPerformed": false,
+    "existingLocalDatabasesModified": false
+  },
+  "postMaintenance": {
+    "observedAt": "2026-11-10T20:08:48.278Z",
+    "checks": {
+      "exactRuntimeRolesRestored": true,
+      "exactCronStateRestored": true,
+      "originalPdfUnchanged": true,
+      "demoStillApproved": true,
+      "paperwake_backendConnected": true,
+      "paperwake_tenantConnected": true,
+      "health": true,
+      "privatePreview": true,
+      "ready": true,
+      "readyDependencies": true
+    },
+    "newExtractions": 0,
+    "newAiCalls": 0
+  },
+  "limitations": [
+    "This is a one-off restore from the actual hosted service, not a scheduled backup system.",
+    "The encrypted archive and recovery identity remain on the same Mac; independent offsite storage and key custody are not established.",
+    "Backup destination, cadence, retention and failure notification decisions remain outstanding.",
+    "The source held synthetic pilot data; this is not a scale, regional disaster or production failover exercise.",
+    "No restored application or worker was activated and no emails, payments or AI work were dispatched."
+  ]
+}
