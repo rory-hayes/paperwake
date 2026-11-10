@@ -4,7 +4,7 @@ import {existsSync,readdirSync} from 'node:fs';
 export const suites={
  launch:['paperwake-invoice-policy','paperwake-invoice-editor','paperwake-review-issues','paperwake-upload-recovery','paperwake-upload-client','paperwake-session-availability','paperwake-signup-invite','paperwake-invoice-flow','paperwake-usage'],
  accounts:['account-email','account-email-worker','account-email-dispatch','account-cleanup-bounds','account-registration','account-recovery','account-recovery-ui','email-verification','email-verification-ui','auth-login','hosted-auth','signup-terms-policy','signup-terms-workflow','signup-terms-ui'],
- boundaries:['request-rate-limit','database-schema','private-storage','storage-error-response','file-deletion-claim','static-serving','dependency-availability','provider-errors'],
+ boundaries:['paperwake-test-database','request-rate-limit','database-schema','private-storage','storage-error-response','file-deletion-claim','static-serving','dependency-availability','provider-errors'],
  processing:['paperwake-ai-budget','upload-workspace-continuity','hosted-worker','ai-usage-attempts','ai-usage-deadline','openai-provider','openai-usage','source-validation','pdf-degenerate-text','pdfjs-render-errors','regional-normalization','schema-empty-array-validation','nested-values','csv-values','frontend-values','timestamps','written-date'],
  billing:['mock-billing-ui','checkout-contract-evidence','checkout-policy-configuration','stripe-test-clock-policy','stripe-workspace-uuid','preview','preview-runtime','unit-economics'],
  recovery:['backup-archive','backup-cli','backup-runtime','backup-staging','backup-supabase'],

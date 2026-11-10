@@ -55,6 +55,23 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Pin the disposable database service address
+        env:
+          CI_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {appendFileSync} from 'node:fs';
+          import {isIP} from 'node:net';
+          const container = process.env.CI_POSTGRES_CONTAINER;
+          assert.match(container, /^[a-f0-9]{12,64}$/);
+          const networks = JSON.parse(execFileSync('docker', ['inspect', '--format', '{{json .NetworkSettings.Networks}}', container], {encoding: 'utf8'}));
+          const addresses = [...new Set(Object.values(networks).map(network => network.IPAddress).filter(Boolean))];
+          assert.equal(addresses.length, 1, 'Pin the exact service address; refuse ambiguous container networks.');
+          assert.equal(isIP(addresses[0]), 4);
+          appendFileSync(process.env.GITHUB_ENV, `PAPERWAKE_TEST_DATABASE_SERVER_ADDRESS=${addresses[0]}\n`);
+          NODE
       - name: Create restricted application database role
         run: |
           node --input-type=module <<'NODE'
