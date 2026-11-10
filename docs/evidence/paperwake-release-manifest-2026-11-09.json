@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-11-09T21:53:43.745675+00:00",
+  "kind": "local_controlled_release_manifest",
+  "database": "paperwake_test",
+  "command": "PGDATABASE=paperwake_test node scripts/test-paperwake.mjs",
+  "manifestSha256": "37e9c394362c7113208c37f206a17966f45b3acb1d5bf0c2f6ea002fd6c68166",
+  "results": {
+    "tests": 468,
+    "pass": 468,
+    "fail": 0,
+    "skipped": 0,
+    "duration_ms": 83980.749416
+  },
+  "typecheck": "passed",
+  "limitations": [
+    "Controlled providers; not real Stripe or Resend acceptance",
+    "Local release manifest; not a GitHub Actions result",
+    "Hosted deployment and recovery acceptance tracked separately",
+    "Recorded before the hosted migration compatibility change; subsequent focused database regressions are tracked separately"
+  ]
+}

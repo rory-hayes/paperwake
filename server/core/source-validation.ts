@@ -1,0 +1,64 @@
+/** Only proven input-validation failures belong here; operational failures retry. */
+export const sourceValidationReasons = Object.freeze({
+  invoice_pdf_only: {message:'Paperwake currently supports supplier invoice PDF files only. Other document types and formats are not supported.',statusCode:415},
+  invoice_page_limit: {message:'Supplier invoices must be five pages or fewer. No pages were processed or charged.',statusCode:413},
+  invoice_native_text: {message:'Every invoice page must contain readable digital text. Scanned, image-only or blank-page PDFs are not supported yet.',statusCode:415},
+  empty: { message: 'The file is empty', statusCode: 400 },
+  file_too_large: { message: 'Files must be 10 MB or smaller', statusCode: 413 },
+  office_archive_invalid: { message: 'Invalid office archive', statusCode: 400 },
+  office_archive_unsupported: { message: 'Split and ZIP64 office archives are not supported', statusCode: 400 },
+  office_entry_limit: { message: 'Office archive contains too many entries', statusCode: 400 },
+  office_directory_invalid: { message: 'Invalid office archive directory', statusCode: 400 },
+  office_entry_invalid: { message: 'Unsupported or invalid office archive entry', statusCode: 400 },
+  office_expansion_limit: { message: 'Expanded office file exceeds the 40 MB limit', statusCode: 400 },
+  office_entry_encoding: { message: 'Office archive entry names must use UTF-8', statusCode: 400 },
+  office_entry_path: { message: 'Invalid or duplicate office archive entry', statusCode: 400 },
+  office_local_entry_invalid: { message: 'Invalid office archive local entry', statusCode: 400 },
+  office_entry_mismatch: { message: 'Office archive entry metadata does not match', statusCode: 400 },
+  office_directory_size: { message: 'Invalid office archive directory size', statusCode: 400 },
+  office_format_unsupported: { message: 'The archive is not a supported unambiguous DOCX, XLSX or ODT document', statusCode: 400 },
+  binary_format_unsupported: { message: 'This binary file type is not supported, regardless of its filename', statusCode: 400 },
+  email_header_limit: { message: 'Email headers exceed the supported 64 KB limit', statusCode: 400 },
+  text_encoding: { message: 'Text files must use UTF-8 encoding or a supported binary format', statusCode: 400 },
+  text_binary_content: { message: 'Binary control content is not accepted as text', statusCode: 400 },
+  format_unsupported: { message: 'Supported formats: PDF, PNG, JPG, TIFF, TXT, EML, CSV, XLSX, DOCX, ODT and HTML', statusCode: 400 },
+  pdf_invalid: { message: 'The file does not contain a valid PDF', statusCode: 400 },
+  pdf_encrypted: { message: 'Encrypted PDFs are not supported', statusCode: 400 },
+  pdf_page_limit: { message: 'PDFs must be 30 pages or fewer', statusCode: 413 },
+  tiff_invalid: { message: 'The file does not contain a valid TIFF document', statusCode: 400 },
+  tiff_unsupported: { message: 'This TIFF encoding is not supported. Export a standard image or PDF and try again.', statusCode: 400 },
+  tiff_page_limit: { message: 'TIFF documents must be 30 pages or fewer', statusCode: 413 },
+  tiff_pixel_limit: { message: 'The TIFF document exceeds the supported pixel or decoded image size limit', statusCode: 413 },
+  tiff_structure_limit: { message: 'The TIFF document exceeds the supported directory or image block limit', statusCode: 413 },
+  tiff_derived_limit: { message: 'The TIFF document is too detailed for the supported preview and AI conversion size. Export a smaller PDF and try again.', statusCode: 413 },
+  tiff_page_bounds: { message: 'The requested TIFF page does not exist', statusCode: 400 },
+  image_format_unsupported: { message: 'Only PNG and JPEG image content is supported', statusCode: 400 },
+  odt_invalid: { message: 'The file does not contain a valid OpenDocument Text package', statusCode: 400 },
+  odt_unsupported: { message: 'This ODT structure or version is not supported. Export a text-based PDF or DOCX and try again.', statusCode: 400 },
+  odt_encrypted: { message: 'Encrypted ODT documents are not supported. Upload an unencrypted copy.', statusCode: 400 },
+  odt_structure_limit: { message: 'The ODT document exceeds the supported package, table or XML structure limits', statusCode: 413 },
+  odt_text_limit: { message: 'The ODT text exceeds the supported 2 MiB limit', statusCode: 413 },
+  odt_empty: { message: 'The ODT document has no readable body text. Export a text-based PDF or DOCX and try again.', statusCode: 400 },
+  xlsx_empty: { message: 'The XLSX file does not contain a worksheet', statusCode: 400 },
+  xlsx_sheet_limit: { message: 'Spreadsheets must contain 30 sheets or fewer', statusCode: 400 },
+  xlsx_dimensions: { message: 'Spreadsheet dimensions exceed the supported limit', statusCode: 400 },
+  xlsx_date_encoding_unsupported: { message: 'This XLSX date encoding is not supported. Re-save it as an XLSX workbook or upload a CSV copy.', statusCode: 400 },
+} as const);
+
+export type SourceValidationReason = keyof typeof sourceValidationReasons;
+
+export function isSourceValidationReason(value: unknown): value is SourceValidationReason {
+  return typeof value === 'string' && Object.hasOwn(sourceValidationReasons, value);
+}
+
+export class SourceValidationError extends Error {
+  readonly code = 'source_validation_failed';
+  readonly statusCode: number;
+  constructor(readonly reason: SourceValidationReason) {
+    if (!isSourceValidationReason(reason)) throw new TypeError('Unknown source validation reason');
+    const definition = sourceValidationReasons[reason];
+    super(definition.message);
+    this.name = 'SourceValidationError';
+    this.statusCode = definition.statusCode;
+  }
+}

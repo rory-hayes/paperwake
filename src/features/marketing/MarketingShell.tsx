@@ -1,0 +1,100 @@
+import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
+
+const navigation = [
+  { label: 'Product', href: '/#product' },
+  { label: 'How it works', href: '/#workflow' },
+  { label: 'Pricing', href: '/#pricing' },
+];
+
+function StartLink({to,label,onClick}:{to:string;label:string;onClick?:()=>void}) {
+  return to.startsWith('#')
+    ? <a className="button primary marketing-cta" href={to} onClick={onClick}>{label}</a>
+    : <Link className="button primary marketing-cta" to={to} onClick={onClick}>{label}</Link>;
+}
+
+export function MarketingHeader({startTo='/sign-up',startLabel='Try ten pages',signInTo='/sign-in'}:{startTo?:string;startLabel?:string;signInTo?:string}={}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
+  return (
+    <header className="marketing-header marketing-header-with-bank">
+      <div className="marketing-container marketing-header-inner">
+        <Link className="folio-brand" to="/" aria-label="Paperwake home">Paperwake</Link>
+        <nav className="marketing-desktop-nav" aria-label="Main navigation">
+          {navigation.map((item) => <a key={item.label} href={item.href}>{item.label}</a>)}
+          <Link to="/help">Resources</Link>
+        </nav>
+        <div className="marketing-header-actions">
+          <Link className="marketing-sign-in" to={signInTo}>Sign in</Link>
+          <StartLink to={startTo} label={startLabel}/>
+        </div>
+        <button
+          ref={menuButton}
+          className="marketing-menu-toggle"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls="marketing-mobile-navigation"
+          aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+      {menuOpen ? (
+        <nav
+          id="marketing-mobile-navigation"
+          className="marketing-mobile-nav"
+          aria-label="Mobile navigation"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              closeMenu();
+              menuButton.current?.focus();
+            }
+          }}
+        >
+          {navigation.map((item) => <a key={item.label} href={item.href} onClick={closeMenu}>{item.label}</a>)}
+          <Link to="/help" onClick={closeMenu}>Resources</Link>
+          <Link to={signInTo} onClick={closeMenu}>Sign in</Link>
+          <StartLink to={startTo} label={startLabel} onClick={closeMenu}/>
+        </nav>
+      ) : null}
+    </header>
+  );
+}
+
+export function MarketingFooter() {
+  return (
+    <footer className="marketing-footer marketing-container">
+      <div className="marketing-footer-grid">
+        <div className="marketing-footer-brand">
+          <Link className="folio-brand" to="/" aria-label="Paperwake home">Paperwake</Link>
+          <p>Supplier invoices into useful spreadsheet rows.</p>
+        </div>
+        <nav aria-label="Product links">
+          <h3>Product</h3>
+          <a href="/#product">Invoice review</a>
+          <a href="/#workflow">How it works</a>
+          <a href="/#pricing">Pricing</a>
+          <Link to="/sign-up">Start your trial</Link>
+        </nav>
+        <nav aria-label="Resources">
+          <h3>Resources</h3>
+
+          <Link to="/help">Help</Link>
+        </nav>
+        <nav aria-label="Legal information">
+          <h3>Legal</h3>
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/terms">Terms</Link>
+        </nav>
+      </div>
+      <div className="marketing-footer-bottom">© 2026 Paperwake</div>
+    </footer>
+  );
+}

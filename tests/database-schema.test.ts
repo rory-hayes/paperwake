@@ -1,0 +1,222 @@
+import {operationalSchemaSql,probeDatabase} from '../server/core/operations.js';
+import test,{before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomBytes,randomUUID} from 'node:crypto';
+import pg from 'pg';
+import {databaseConfig} from '../server/core/config.js';
+import {databaseIdentifier,secureDatabaseConfig,scopeDatabasePool,transaction,closeDatabase} from '../server/core/db.js';
+import {buildMigrationSql,readMigrations,scramVerifier} from '../scripts/migrate.js';
+
+const suffix=randomBytes(8).toString('hex'),schema=`folio_qa_${suffix}`,adminRole=`folio_qa_admin_${suffix}`,appRole=`folio_qa_app_${suffix}`,canary=`folio_qa_legacy_${suffix}`;
+const adminPassword=randomBytes(32).toString('base64url'),appPassword=randomBytes(32).toString('base64url');
+const control=new pg.Pool(process.env.DATABASE_ADMIN_URL?secureDatabaseConfig({connectionString:process.env.DATABASE_ADMIN_URL,max:1}):{...databaseConfig,user:process.env.PGADMINUSER||'folio_admin',max:1});
+let administrator:pg.Pool,tenant:pg.Pool;
+const workspaceA=randomUUID(),workspaceB=randomUUID(),userId=randomUUID(),parserId=randomUUID(),documentId=randomUUID(),jobId=randomUUID(),schemaId=randomUUID();
+let migrationSql:string;
+async function apply(sql:string){const client=await control.connect();try{return await client.query(sql);}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}
+function rolePool(role:string,password:string){
+ let config:pg.PoolConfig;
+ if(process.env.DATABASE_ADMIN_URL){const url=new URL(process.env.DATABASE_ADMIN_URL);url.username=role;url.password=password;config=secureDatabaseConfig({connectionString:url.toString(),max:1});}
+ else config={...databaseConfig,user:role,password,max:1};
+ return scopeDatabasePool(new pg.Pool(config),schema);
+}
+
+before(async()=>{
+ // Test-owned schema/roles only: the public worker cannot see these queued records.
+ await control.query(`CREATE TABLE public.${canary}(value text NOT NULL)`);
+ await control.query(`INSERT INTO public.${canary} VALUES('owned legacy sentinel')`);
+ const migrations=await readMigrations();
+ migrationSql=buildMigrationSql(migrations,{schema,adminRole,appRole});
+ const initial=buildMigrationSql(migrations,{schema,adminRole,appRole,bootstrap:true})
+  .replace('__FOLIO_ADMIN_SCRAM_VERIFIER__',scramVerifier(adminPassword))
+  .replace('__FOLIO_APP_SCRAM_VERIFIER__',scramVerifier(appPassword));
+ await apply(initial);
+ administrator=rolePool(adminRole,adminPassword);tenant=rolePool(appRole,appPassword);
+});
+after(async()=>{
+ await Promise.all([administrator?.end(),tenant?.end(),closeDatabase()]);
+ await control.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+ await control.query(`DROP TABLE IF EXISTS public.${canary}`);
+ await control.query(`DROP ROLE IF EXISTS ${adminRole}`);await control.query(`DROP ROLE IF EXISTS ${appRole}`);
+ await control.end();
+});
+
+test('schema identifiers and remote TLS cannot introduce another schema or disable certificate verification',()=>{
+ for(const value of ['folio,public','folio;drop table users','"folio"','pg_catalog','auth','storage',''])assert.throws(()=>databaseIdentifier(value));
+ assert.equal(databaseIdentifier('folio'),'folio');assert.equal(databaseIdentifier('public'),'public');
+ const config=secureDatabaseConfig({connectionString:'postgresql://synthetic:synthetic@pooler.example.test:6543/postgres?sslmode=no-verify'},'SYNTHETIC\\nCA');
+ assert.deepEqual(config.ssl,{rejectUnauthorized:true,ca:'SYNTHETIC\nCA'});
+ assert.equal(new URL(config.connectionString!).searchParams.has('sslmode'),false);
+ assert.deepEqual(secureDatabaseConfig({host:'/private/test/socket'},undefined),{host:'/private/test/socket'});
+});
+
+test('fresh isolated migrations are idempotent, preserve legacy tables and never grant runtime access to them',async()=>{
+ const before=(await control.query(`SELECT name FROM ${schema}.schema_migrations ORDER BY name`)).rows;
+ await apply(migrationSql);
+ assert.deepEqual((await control.query(`SELECT name FROM ${schema}.schema_migrations ORDER BY name`)).rows,before);
+ assert.deepEqual((await control.query(`SELECT value FROM public.${canary}`)).rows,[{value:'owned legacy sentinel'}]);
+ for(const role of [adminRole,appRole]){
+  const privileges=(await control.query('SELECT rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=$1',[role])).rows[0];
+  assert.ok(Object.values(privileges).every(value=>value===false));
+  assert.equal((await control.query('SELECT has_table_privilege($1,$2,\'SELECT,INSERT,UPDATE,DELETE\') allowed',[role,`public.${canary}`])).rows[0].allowed,false);
+  assert.equal((await control.query('SELECT has_schema_privilege($1,$2,\'CREATE\') allowed',[role,schema])).rows[0].allowed,false);
+ }
+ await assert.rejects(administrator.query(`SELECT * FROM public.${canary}`),/permission denied/);
+ await assert.rejects(tenant.query(`SELECT * FROM public.${canary}`),/permission denied/);
+});
+
+test('migration replay preserves the installed watchdog owner-only execution boundary',async()=>{
+ await control.query(`CREATE FUNCTION ${schema}.worker_has_runnable_work() RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog AS 'SELECT false'`);
+ await control.query(`REVOKE ALL ON FUNCTION ${schema}.worker_has_runnable_work() FROM PUBLIC,${adminRole},${appRole}`);
+ for(let attempt=0;attempt<2;attempt++){
+  await apply(migrationSql);
+  for(const role of [adminRole,appRole])assert.equal((await control.query("SELECT has_function_privilege($1,$2,'EXECUTE') allowed",[role,`${schema}.worker_has_runnable_work()`])).rows[0].allowed,false);
+  assert.equal((await control.query(`SELECT EXISTS(SELECT 1 FROM pg_proc p,aclexplode(p.proacl) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') allowed`,[`${schema}.worker_has_runnable_work()`])).rows[0].allowed,false);
+  await assert.rejects(administrator.query('SELECT worker_has_runnable_work()'),/permission denied/);
+  await assert.rejects(tenant.query('SELECT worker_has_runnable_work()'),/permission denied/);
+ }
+});
+
+test('account recovery tables preserve forced RLS and backend-only grants after private-schema migration replays',async()=>{
+ for(const table of ['account_recovery_requests','account_recovery_tokens','account_email_outbox','account_recovery_limits','account_security_events','account_registration_requests','account_registration_limits','email_verification_requests','email_verification_limits','email_verification_tokens','invitation_email_outbox','invitation_email_limits']){
+  const name=`${schema}.${table}`;
+  const flags=(await control.query('SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid=$1::regclass',[name])).rows[0];
+  assert.deepEqual(flags,{relrowsecurity:true,relforcerowsecurity:true});
+  assert.equal((await control.query("SELECT has_table_privilege($1,$2,'SELECT,INSERT,UPDATE,DELETE') allowed",[appRole,name])).rows[0].allowed,false);
+  assert.equal((await administrator.query(`SELECT * FROM ${table}`)).rowCount,0);
+  await assert.rejects(tenant.query(`SELECT * FROM ${table}`),/permission denied/);
+ }
+});
+
+test('direct pool and checked-out client queries reset schema and bounded timeouts for every transaction',async()=>{
+ for(let index=0;index<3;index++){
+  const result=await administrator.query("SELECT current_schema() schema,current_setting('statement_timeout') statement_timeout,current_setting('lock_timeout') lock_timeout");
+  assert.deepEqual(result.rows[0],{schema,statement_timeout:'10s',lock_timeout:'5s'});
+ }
+ const client=await administrator.connect();
+ try{
+  assert.equal((await client.query('SELECT current_schema() schema')).rows[0].schema,schema);
+  await client.query('BEGIN');
+  assert.equal((await client.query('SELECT current_schema() schema')).rows[0].schema,schema);
+  await client.query('SAVEPOINT owned_checkpoint');await client.query('ROLLBACK TO SAVEPOINT owned_checkpoint');
+  await client.query('COMMIT');
+  assert.equal((await client.query('SELECT current_schema() schema')).rows[0].schema,schema);
+ }finally{client.release();}
+ await assert.rejects(administrator.query({name:'unsupported_session_statement',text:'SELECT 1'}),/unnamed SQL/);
+});
+
+test('migration refuses indirect legacy access through PUBLIC-executable SECURITY DEFINER functions',async()=>{
+ await control.query(`CREATE FUNCTION public.${canary}() RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS 'SELECT value FROM public.${canary} LIMIT 1'`);
+ try{
+  assert.equal((await administrator.query(`SELECT public.${canary}() value`)).rows[0].value,'owned legacy sentinel');
+  await assert.rejects(apply(migrationSql),/legacy SECURITY DEFINER function/);
+  assert.deepEqual((await control.query(`SELECT value FROM public.${canary}`)).rows,[{value:'owned legacy sentinel'}]);
+ }finally{await control.query(`DROP FUNCTION public.${canary}()`);}
+});
+
+test('platform SECURITY DEFINER event-trigger functions are not directly callable or bindable by restricted runtime roles',async()=>{
+ const name=`${canary}_event`,temporary=`owned_event_${suffix}`;
+ await control.query(`CREATE FUNCTION public.${name}() RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS 'BEGIN RETURN; END'`);
+ try{
+  for(const [pool,role] of [[administrator,adminRole],[tenant,appRole]] as const){
+   assert.equal((await control.query("SELECT has_schema_privilege($1,'public','USAGE') AND has_function_privilege($1,$2,'EXECUTE') allowed",[role,`public.${name}()`])).rows[0].allowed,true);
+   await assert.rejects(pool.query(`SELECT public.${name}()`),/(?:event )?trigger functions can only be called as (?:event )?triggers/);
+   await assert.rejects(pool.query(`CREATE EVENT TRIGGER ${name} ON ddl_command_end EXECUTE FUNCTION public.${name}()`),/permission denied to create event trigger|must be superuser/i);
+   const client=await pool.connect();
+   try{
+    await client.query(`CREATE TEMP TABLE ${temporary}(value text)`);
+    await assert.rejects(client.query(`CREATE TRIGGER owned_binding BEFORE INSERT ON pg_temp.${temporary} FOR EACH ROW EXECUTE FUNCTION public.${name}()`),/must return type trigger/);
+   }finally{await client.query(`DROP TABLE IF EXISTS pg_temp.${temporary}`);client.release();}
+  }
+  // This platform-shaped function alone must not prevent an isolated migration.
+  await apply(migrationSql);
+ }finally{await control.query(`DROP EVENT TRIGGER IF EXISTS ${name}`);await control.query(`DROP FUNCTION public.${name}()`);}
+});
+
+test('ordinary SECURITY DEFINER trigger functions remain blocked because runtime-owned temporary tables can invoke them',async()=>{
+ const name=`${canary}_trigger`,temporary=`owned_trigger_${suffix}`;
+ await control.query(`CREATE FUNCTION public.${name}() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS 'BEGIN NEW.value:=current_user; RETURN NEW; END'`);
+ try{
+  const migrationRole=(await control.query('SELECT current_user role')).rows[0].role;
+  for(const [pool,role] of [[administrator,adminRole],[tenant,appRole]] as const){
+   assert.equal((await control.query("SELECT has_schema_privilege($1,'public','CREATE') allowed",[role])).rows[0].allowed,false);
+   await assert.rejects(pool.query(`SELECT public.${name}()`),/trigger functions can only be called as triggers/);
+   await assert.rejects(pool.query(`CREATE TRIGGER owned_binding BEFORE INSERT ON public.${canary} FOR EACH ROW EXECUTE FUNCTION public.${name}()`),/permission denied/);
+   const client=await pool.connect();
+   try{
+    await client.query(`CREATE TEMP TABLE ${temporary}(value text)`);
+    await client.query(`CREATE TRIGGER owned_binding BEFORE INSERT ON pg_temp.${temporary} FOR EACH ROW EXECUTE FUNCTION public.${name}()`);
+    assert.deepEqual((await client.query(`INSERT INTO pg_temp.${temporary} VALUES('owned synthetic sentinel') RETURNING value`)).rows,[{value:migrationRole}]);
+   }finally{await client.query(`DROP TABLE IF EXISTS pg_temp.${temporary}`);client.release();}
+  }
+  await assert.rejects(apply(migrationSql),/legacy SECURITY DEFINER function/);
+ }finally{await control.query(`DROP FUNCTION public.${name}()`);}
+});
+
+test('restricted administrator operates across workspaces while tenant context cannot leak after commit or rollback',async()=>{
+ await administrator.query('INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4)',[userId,`owned-${suffix}@example.test`,'Owned isolation fixture','unusable-fixture-hash']);
+ for(const id of [workspaceA,workspaceB])await administrator.query('INSERT INTO workspaces(id,name,slug) VALUES($1,$2,$3)',[id,'Owned isolation workspace',id]);
+ assert.equal((await administrator.query('SELECT id FROM workspaces')).rowCount,2);
+ assert.equal((await tenant.query('SELECT id FROM workspaces')).rowCount,0);
+ for(const id of [workspaceA,workspaceB,workspaceA]){
+  const rows=await transaction(tenant,async client=>{await client.query("SELECT set_config('app.workspace_id',$1,true)",[id]);return (await client.query('SELECT id FROM workspaces')).rows;});
+  assert.deepEqual(rows,[{id}]);assert.equal((await tenant.query('SELECT id FROM workspaces')).rowCount,0);
+ }
+ await assert.rejects(transaction(tenant,async client=>{await client.query("SELECT set_config('app.workspace_id',$1,true)",[workspaceA]);await client.query('SELECT missing_owned_column FROM workspaces');}),/does not exist/);
+ assert.equal((await tenant.query('SELECT id FROM workspaces')).rowCount,0);
+ await assert.rejects(tenant.query('SELECT * FROM users'),/permission denied/);
+ await assert.rejects(administrator.query('CREATE TABLE unauthorized_runtime_ddl(id int)'),/permission denied/);
+});
+
+test('document journal uses the trigger table schema and supports non-bypass administrator claims',async()=>{
+ await transaction(tenant,async client=>{
+  await client.query("SELECT set_config('app.workspace_id',$1,true)",[workspaceA]);
+  await client.query('INSERT INTO parsers(id,workspace_id,name) VALUES($1,$2,$3)',[parserId,workspaceA,'Owned isolated parser']);
+  await client.query('INSERT INTO schema_versions(id,workspace_id,parser_id,version,schema,created_by) VALUES($1,$2,$3,1,$4,$5)',[schemaId,workspaceA,parserId,JSON.stringify({fields:[]}),userId]);
+  await client.query("INSERT INTO documents(id,workspace_id,parser_id,name,mime_type,byte_size,sha256,storage_key,status,page_count) VALUES($1,$2,$3,'owned.txt','text/plain',1,'owned-isolation-sha',$4,'received',1)",[documentId,workspaceA,parserId,`${workspaceA}/${documentId}`]);
+  await client.query('INSERT INTO jobs(id,workspace_id,document_id,schema_version_id,config) VALUES($1,$2,$3,$4,$5)',[jobId,workspaceA,documentId,schemaId,JSON.stringify({mode:'rules'})]);
+  await client.query("UPDATE documents SET status='queued' WHERE id=$1",[documentId]);
+ });
+ await administrator.query("UPDATE documents SET status='processing' WHERE id=$1",[documentId]);
+ const events=(await administrator.query('SELECT state,operation_id FROM document_events WHERE document_id=$1 ORDER BY sequence',[documentId])).rows;
+ assert.deepEqual(events,[{state:'received',operation_id:null},{state:'queued',operation_id:jobId},{state:'processing',operation_id:jobId}]);
+ await assert.rejects(administrator.query('UPDATE document_events SET state=state WHERE document_id=$1',[documentId]),/permission denied/);
+});
+
+test('releasing an unfinished scoped transaction rolls it back instead of returning contaminated state',async()=>{
+ const id=randomUUID(),client=await administrator.connect();
+ await client.query('BEGIN');await client.query('INSERT INTO workspaces(id,name,slug) VALUES($1,$2,$3)',[id,'Abandoned transaction fixture',id]);
+ client.release();
+ assert.equal((await administrator.query('SELECT id FROM workspaces WHERE id=$1',[id])).rowCount,0);
+ assert.equal((await administrator.query('SELECT current_schema() schema')).rows[0].schema,schema);
+});
+
+
+test('AI usage keeps tenant reads only and backend writes after repeated migration grants',async()=>{
+ for(let replay=0;replay<2;replay++){
+  await apply(migrationSql);
+  const relation=`${schema}.ai_usage_attempts`;
+  assert.deepEqual((await control.query('select relrowsecurity,relforcerowsecurity from pg_class where oid=$1::regclass',[relation])).rows[0],{relrowsecurity:true,relforcerowsecurity:true});
+  for(const privilege of ['SELECT','INSERT','UPDATE','DELETE']){
+   assert.equal((await control.query('select has_table_privilege($1,$2,$3) allowed',[appRole,relation,privilege])).rows[0].allowed,privilege==='SELECT');
+  }
+  for(const privilege of ['SELECT','INSERT','UPDATE'])assert.equal((await control.query('select has_table_privilege($1,$2,$3) allowed',[adminRole,relation,privilege])).rows[0].allowed,true);
+  await assert.rejects(tenant.query("insert into ai_usage_attempts(id,workspace_id,kind,operation_id,attempt) values(gen_random_uuid(),gen_random_uuid(),'extraction',gen_random_uuid(),1)"),/permission denied/);
+ }
+});
+
+
+test('existing runtime readiness probes reject a missing cost table or needed column under both roles',async()=>{
+ const probe=()=>Promise.all([probeDatabase(administrator,operationalSchemaSql.administrator),probeDatabase(tenant,operationalSchemaSql.tenant)]);
+ await probe();
+ await control.query(`alter table ${schema}.ai_usage_attempts rename to ai_usage_attempts_readiness_missing`);
+ try{
+  for(const [pool,sql] of [[administrator,operationalSchemaSql.administrator],[tenant,operationalSchemaSql.tenant]] as const)await assert.rejects(probeDatabase(pool,sql),{message:'Probe unavailable'});
+ }finally{await control.query(`alter table ${schema}.ai_usage_attempts_readiness_missing rename to ai_usage_attempts`);}
+ await probe();
+ await control.query(`alter table ${schema}.ai_usage_attempts rename column cost_usd to cost_usd_readiness_missing`);
+ try{
+  for(const [pool,sql] of [[administrator,operationalSchemaSql.administrator],[tenant,operationalSchemaSql.tenant]] as const)await assert.rejects(probeDatabase(pool,sql),{message:'Probe unavailable'});
+ }finally{await control.query(`alter table ${schema}.ai_usage_attempts rename column cost_usd_readiness_missing to cost_usd`);}
+ await probe();
+});

@@ -1,0 +1,17 @@
+.git
+.vercel
+.github
+.codex
+.agents
+.local
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules
+dist
+coverage
+test-results
+docs/evidence
+*.log
+.DS_Store

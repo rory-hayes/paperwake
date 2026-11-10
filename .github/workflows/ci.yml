@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: paperwake_admin
+          POSTGRES_PASSWORD: synthetic_ci_admin_only
+          POSTGRES_DB: paperwake_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paperwake_admin -d paperwake_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      APP_ORIGIN: http://127.0.0.1:5189
+      DATABASE_ADMIN_ROLE: paperwake_admin
+      DATABASE_APP_ROLE: paperwake_app
+      # These credentials exist only in this disposable CI service database.
+      DATABASE_ADMIN_URL: postgresql://paperwake_admin:synthetic_ci_admin_only@127.0.0.1:5432/paperwake_ci
+      DATABASE_URL: postgresql://paperwake_app:synthetic_ci_app_only@127.0.0.1:5432/paperwake_ci
+      STORAGE_DIR: /tmp/paperwake-ci-files
+      FOLIO_BILLING_MOCK: 'false'
+      RESEND_INBOUND_ENABLED: 'false'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.13.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Create restricted application database role
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const admin = new pg.Client({ connectionString: process.env.DATABASE_ADMIN_URL });
+          await admin.connect();
+          try {
+            await admin.query("CREATE ROLE paperwake_app LOGIN PASSWORD 'synthetic_ci_app_only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS");
+            const { rows: [role] } = await admin.query("SELECT rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolreplication, rolbypassrls FROM pg_roles WHERE rolname = 'paperwake_app'");
+            if (!role || Object.values(role).some(Boolean)) throw new Error('CI application role is not restricted.');
+          } finally {
+            await admin.end();
+          }
+          NODE
+      - name: Apply database migrations
+        run: npm run db:migrate
+      - name: Run explicit Paperwake launch and infrastructure suites
+        run: npm test
+      - name: Typecheck and package the hosted application
+        run: npm run build:vercel
+      - name: Verify the isolated function runtime and document decoders
+        run: node scripts/verify-vercel-bundle.mjs
+      - name: Install PostgreSQL 17 for the isolated restore drill
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --location --silent --show-error --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-17
+      - name: Capture and restore a managed database with controlled private object storage
+        env:
+          FOLIO_BACKUP_QA_PG_BIN: /usr/lib/postgresql/17/bin
+        run: npm run verify:backup:managed

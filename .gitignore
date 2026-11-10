@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# Public Paperwake documentation is an explicit allowlist. Inherited Folio
+# screenshots, account/deployment evidence, design exports and history stay
+# preserved on disk but are not part of this public repository.
+/docs/*
+!/docs/PAPERWAKE-DEPLOYMENT.md
+!/docs/PAPERWAKE-ECONOMICS.md
+!/docs/PAPERWAKE-TEST-SCOPE.md
+!/docs/PAPERWAKE-WEEK-ONE-EVIDENCE.md
+!/docs/PAPERWAKE-PUBLIC-REPOSITORY.md
+!/docs/BACKUP-RESTORE.md
+!/docs/UNIT-ECONOMICS.md
+!/docs/unit-economics.example.json
+!/docs/evidence/
+/docs/evidence/*
+!/docs/evidence/paperwake-release-manifest-2026-11-09.json
+.local/
+.vercel/
+coverage/
+*.log
+.DS_Store
+test-results/
+.monitor/
+.vercel
+.env*
+!.env.example

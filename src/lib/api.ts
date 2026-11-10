@@ -1,0 +1,122 @@
+import {environmentManager,keepPreviousData,useQuery,useQueryClient,type QueryClient,type UseQueryOptions} from '@tanstack/react-query';
+import {useRef,useState} from 'react';
+
+export class ApiError extends Error {constructor(message:string,public status:number){super(message);}}
+export function workspaceId(){return sessionStorage.getItem('folio.workspace')||'';}
+export async function api<T=any>(path:string,options:RequestInit={},selectedWorkspace=workspaceId()):Promise<T> {
+  const headers=new Headers(options.headers);
+  if(selectedWorkspace)headers.set('X-Workspace-Id',selectedWorkspace);
+  if(options.body&&!(options.body instanceof FormData))headers.set('Content-Type','application/json');
+  const response=await fetch(path,{...options,headers,credentials:'same-origin'});
+  if(!response.ok){const detail=await response.json().catch(()=>({message:'The request could not be completed.'}));throw new ApiError(detail.message||detail.error||'The request failed.',response.status);}
+  if(response.status===204)return undefined as T;
+  return response.json();
+}
+export const post=<T=any>(path:string,body:unknown={})=>api<T>(path,{method:'POST',body:JSON.stringify(body)});
+export const patch=<T=any>(path:string,body:unknown)=>api<T>(path,{method:'PATCH',body:JSON.stringify(body)});
+type DataQueryPolicy={stopOnNotFound?:boolean};
+export function dataQueryOptions<T=any>(client:QueryClient,path:string,poll:boolean|number=false,retainPrevious=false,policy:DataQueryPolicy={}):UseQueryOptions<T>{
+  const interval=typeof poll==='number'?poll:poll?1800:false;
+  const options:UseQueryOptions<T>={queryKey:[workspaceId(),path],queryFn:({signal})=>api<T>(path,{signal}),refetchInterval:interval,placeholderData:retainPrevious?keepPreviousData:undefined};
+  if(!policy.stopOnNotFound)return options;
+  // Preserve client/key-specific retry settings for every other error.
+  const retry=client.defaultQueryOptions(options).retry??(environmentManager.isServer()?0:3);
+  const notFound=(error:unknown)=>error instanceof ApiError&&error.status===404;
+  return {...options,refetchInterval:query=>notFound(query.state.error)?false:interval,retry:(failureCount,error)=>!notFound(error)&&(typeof retry==='function'?retry(failureCount,error):retry===true||(typeof retry==='number'&&failureCount<retry))};
+}
+export function useData<T=any>(path:string,poll:boolean|number=false,retainPrevious=false,policy:DataQueryPolicy={}){return useQuery<T>(dataQueryOptions<T>(useQueryClient(),path,poll,retainPrevious,policy));}
+export function useAction(){
+  const client=useQueryClient();const running=useRef(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [message,setMessage]=useState('');
+  async function run<T>(action:()=>Promise<T>,success='Saved.'):Promise<T|undefined>{if(running.current)return undefined;running.current=true;setBusy(true);setError('');setMessage('');try{const result=await action();await client.invalidateQueries();setMessage(success);return result;}catch(e){setError(e instanceof Error?e.message:'Something went wrong.');return undefined;}finally{running.current=false;setBusy(false);}}
+  return {run,busy,error,message,setError,setMessage};
+}
+type UploadResult={document?:{id:string};duplicate?:boolean;name?:string;error?:string;jobId?:string|null};
+// Store only resumable IDs, never file bytes or signed capabilities. Server-side
+// ownership and byte verification remain authoritative across account changes.
+const uploadedInvoices=new Map<string,{uploadId:string;expiresAt:number}>();
+function retainUploadedInvoice(key:string,uploadId:string,expiresAt?:string){
+  const expiry=Date.parse(expiresAt||'');
+  for(const [cached,value] of uploadedInvoices)if(value.expiresAt<=Date.now())uploadedInvoices.delete(cached);
+  if(uploadedInvoices.size>=50)uploadedInvoices.delete(uploadedInvoices.keys().next().value!);
+  uploadedInvoices.set(key,{uploadId,expiresAt:Number.isFinite(expiry)?expiry:Date.now()+15*60_000});
+}
+export async function uploadDocuments(parserId:string,files:File[],options:{bankLocale?:'en-IE'|'en-US'|'de-DE'}={}):Promise<UploadResult&{results:UploadResult[]}>{
+  // Keep every application request in this batch bound to the workspace where it started.
+  const selectedWorkspace=workspaceId();
+  const configuration=await api<{strategy:'signed'|'multipart';maxBytes:number}>('/api/uploads/config',{},selectedWorkspace);
+  if(configuration.strategy==='multipart'){
+    const form=new FormData();files.forEach(file=>form.append('files',file));
+    const query=options.bankLocale?`?bankLocale=${encodeURIComponent(options.bankLocale)}`:'';
+    return api(`/api/parsers/${parserId}/documents${query}`,{method:'POST',body:form,headers:{'Idempotency-Key':crypto.randomUUID()}},selectedWorkspace);
+  }
+  const results:UploadResult[]=[];
+  for(const file of files){
+    try{
+      if(file.size<1||file.size>configuration.maxBytes)throw new Error('Each file must contain data and be 10 MB or smaller.');
+      const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+      const sha256=Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,'0')).join('');
+      const resumeKey=JSON.stringify([selectedWorkspace,parserId,sha256,file.size,options.bankLocale||'']);
+      const cached=uploadedInvoices.get(resumeKey);
+      if(cached&&cached.expiresAt>Date.now()){
+        try{
+          results.push(await api<UploadResult>(`/api/uploads/${cached.uploadId}/finalize`,{method:'POST',body:'{}'},selectedWorkspace));
+          uploadedInvoices.delete(resumeKey);continue;
+        }catch(error){
+          // Expiry/deletion/account change requires a fresh server-owned receipt.
+          if(!(error instanceof ApiError)||![404,410].includes(error.status))throw error;
+          uploadedInvoices.delete(resumeKey);
+        }
+      }else if(cached)uploadedInvoices.delete(resumeKey);
+      const reservation=await api<{uploadId:string;uploadUrl:string;expiresAt?:string}>(`/api/parsers/${parserId}/uploads`,{method:'POST',body:JSON.stringify({filename:file.name,size:file.size,sha256,...(options.bankLocale?{bankLocale:options.bankLocale}:{})})},selectedWorkspace);
+      const destination=new URL(reservation.uploadUrl);
+      if(destination.protocol!=='https:'||!destination.hostname.endsWith('.supabase.co'))throw new Error('The private upload destination is invalid.');
+      let uploadError:Error|undefined;
+      try{
+        const uploaded=await fetch(destination,{method:'PUT',body:file,headers:{'Content-Type':'application/octet-stream','x-upsert':'false'},credentials:'omit',redirect:'error',referrerPolicy:'no-referrer'});
+        if(!uploaded.ok){await uploaded.body?.cancel();throw new Error('The file could not be uploaded. Please retry.');}
+        await uploaded.body?.cancel();
+        retainUploadedInvoice(resumeKey,reservation.uploadId,reservation.expiresAt);
+      }catch(error){uploadError=error instanceof Error?error:new Error('The file could not be uploaded. Please retry.');}
+      // A failed/lost PUT response can still leave the exact file in private
+      // storage (including a same-file retry with upsert disabled). Verify it.
+      try{
+        results.push(await api<UploadResult>(`/api/uploads/${reservation.uploadId}/finalize`,{method:'POST',body:'{}'},selectedWorkspace));
+        uploadedInvoices.delete(resumeKey);
+      }catch(error){
+        if(error instanceof ApiError&&[400,403,404,410,413,415,422].includes(error.status))uploadedInvoices.delete(resumeKey);
+        throw uploadError||error;
+      }
+    }catch(error){results.push({name:file.name,error:error instanceof Error?error.message:'Upload failed.'});}
+  }
+  return {...(results.length===1?results[0]:{}),results};
+}
+/** Fetch the scoped URL first so workspace headers are never forwarded across origins. */
+export async function fetchOriginalFile(documentId:string,signal?:AbortSignal,bundle:boolean|'archive'=false){
+  const route=bundle==='archive'?'archive-original':bundle?'bundle-original':'original';
+  const location=await api<{url:string;external:boolean}>(`/api/documents/${documentId}/${route}-url`,{signal});
+  if(location.external){
+    const url=new URL(location.url);
+    if(url.protocol!=='https:'||!url.hostname.endsWith('.supabase.co'))throw new Error('The private download destination is invalid.');
+    return fetch(url,{signal,credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store'});
+  }
+  if(location.url!==`/api/documents/${documentId}/${route}`)throw new Error('The private download destination is invalid.');
+  const selectedWorkspace=workspaceId();
+  return fetch(location.url,{signal,headers:selectedWorkspace?{'X-Workspace-Id':selectedWorkspace}:undefined,credentials:'same-origin',cache:'no-store'});
+}
+/** Derived TIFF pages stay on the authenticated application origin. */
+export async function fetchDocumentPagePreview(documentId:string,page:number,signal?:AbortSignal){
+  if(!/^[a-f0-9-]{36}$/i.test(documentId)||!Number.isInteger(page)||page<1)throw new Error('Choose a valid document page.');
+  const selectedWorkspace=workspaceId();
+  const response=await fetch(`/api/documents/${documentId}/preview?page=${page}`,{signal,headers:selectedWorkspace?{'X-Workspace-Id':selectedWorkspace}:undefined,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer'});
+  if(!response.ok||(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase()!=='image/jpeg'){
+    await response.body?.cancel();throw new Error('This TIFF page could not be previewed. Try again or download the original TIFF.');
+  }
+  return response;
+}
+export async function downloadFile(path:string,filename:string){
+  const original=/^\/api\/documents\/([a-f0-9-]{36})\/(bundle-|archive-)?original$/.exec(path);
+  const selectedWorkspace=workspaceId();
+  const response=original?await fetchOriginalFile(original[1],undefined,original[2]==='archive-'?'archive':Boolean(original[2])):await fetch(path,{headers:selectedWorkspace?{'X-Workspace-Id':selectedWorkspace}:undefined,credentials:'same-origin'});
+  if(!response.ok)throw new Error('The download could not be completed.');
+  const href=URL.createObjectURL(await response.blob());const anchor=document.createElement('a');anchor.href=href;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(href),5000);
+}

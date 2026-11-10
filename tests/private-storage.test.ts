@@ -1,0 +1,175 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {config} from '../server/core/config.js';
+import {createSupabaseStorage,privateStorage,readBoundedResponse,validateStorageKey,safeDownloadName,ORIGINALS_BUCKET,storageDiagnostic} from '../server/core/storage.js';
+const workspace=randomUUID(),key=`${workspace}/${randomUUID()}`,url='https://storage-fixture.supabase.co';
+const bucket={id:ORIGINALS_BUCKET,public:false,file_size_limit:10485760};
+const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
+function storage(handler:(url:URL,init:RequestInit)=>Promise<Response>|Response){return createSupabaseStorage({url,serviceRoleKey:'owned synthetic storage credential',fetch:async(input,init)=>handler(new URL(String(input)),init!)});}
+
+test('private storage accepts only two UUID key segments and an exact workspace',()=>{
+ assert.equal(validateStorageKey(key,workspace),key);
+ for(const invalid of ['../secret',`${workspace}/../secret`,`${workspace}/${randomUUID()}/extra`,`https://elsewhere.test/object`,`${randomUUID()}/${randomUUID()}`])assert.throws(()=>validateStorageKey(invalid,workspace));
+ assert.equal(safeDownloadName('../invoice\r\nInjected.txt'),'invoiceInjected.txt');
+ assert.throws(()=>createSupabaseStorage({url:'http://127.0.0.1',serviceRoleKey:'fixture'}));
+});
+test('workspace case variants preserve historical object keys without admitting foreign or malformed prefixes',async()=>{
+ const canonical='abcdefab-cdef-4abc-8def-abcdefabcdef',document='12345678-1234-4123-8123-123456789abc';
+ const historical=`${canonical.toUpperCase()}/${document.toUpperCase()}`,prefixes:string[]=[];
+ for(const selected of [canonical,canonical.toUpperCase(),'Abcdefab-cdef-4abc-8def-abcdefabcdef'])assert.equal(validateStorageKey(historical,selected),historical);
+ for(const selected of ['01234567-89ab-4cde-8fab-0123456789ab',`${canonical}\n`,`${canonical}/..`,` ${canonical}`,`${canonical} `])assert.throws(()=>validateStorageKey(historical,selected),(error:any)=>error.statusCode===400);
+ for(const invalid of [`${historical}/extra`,`${canonical.toUpperCase()}/../${document}`,`${canonical.toUpperCase()}\\${document}`,`${canonical.toUpperCase()}/${document}\n`])assert.throws(()=>validateStorageKey(invalid,canonical),(error:any)=>error.statusCode===400);
+ const client=storage(endpoint=>{prefixes.push(endpoint.pathname);if(endpoint.pathname.includes('/bucket/'))return json(bucket);return new Response('owned historical original');});
+ assert.equal((await client.read(validateStorageKey(historical,canonical))).toString(),'owned historical original');
+ assert.equal(prefixes.at(-1),`/storage/v1/object/authenticated/${ORIGINALS_BUCKET}/${historical}`);
+});
+test('filesystem operations reject traversal and absolute keys while preserving owned storage and outside files',async()=>{
+ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'folio-storage-containment-'));
+ const previousRoot=config.storageDir,previousDriver=process.env.STORAGE_DRIVER;
+ config.storageDir=path.join(directory,'storage');process.env.STORAGE_DRIVER='filesystem';
+ const outside=path.join(directory,'storage-sibling','outside');
+ try{
+  await fs.mkdir(path.dirname(outside));await fs.writeFile(outside,'owned outside sentinel');
+  const client=privateStorage();
+  for(const invalid of ['../storage-sibling/outside',outside,`${workspace}/../../storage-sibling/outside`,`${workspace}\\..\\outside`,`${key}\n`,`${key}/extra`,`${workspace}/%2e%2e`,`${workspace}/\0`]){
+   const rejected=(error:any)=>error.statusCode===400&&error.message==='Invalid private storage key';
+   await assert.rejects(client.write(invalid,Buffer.from('must not write')),rejected);
+   await assert.rejects(client.read(invalid),rejected);
+   await assert.rejects(client.remove(invalid),rejected);
+  }
+  assert.equal(await fs.readFile(outside,'utf8'),'owned outside sentinel');
+  await client.write(key,Buffer.from('owned original'));
+  assert.equal((await client.read(key)).toString(),'owned original');
+  assert.equal(await fs.readFile(path.join(config.storageDir,key),'utf8'),'owned original');
+  await assert.rejects(client.write(key,Buffer.from('replacement')),(error:any)=>error.code==='EEXIST');
+  await client.remove(key);await client.remove(key);
+  await assert.rejects(fs.stat(path.join(config.storageDir,key)),(error:any)=>error.code==='ENOENT');
+  assert.equal(await fs.readFile(outside,'utf8'),'owned outside sentinel');
+ }finally{
+  config.storageDir=previousRoot;if(previousDriver===undefined)delete process.env.STORAGE_DRIVER;else process.env.STORAGE_DRIVER=previousDriver;
+  await fs.rm(directory,{recursive:true,force:true});
+ }
+});
+test('bounded response rejects excessive declared and streaming sizes without retaining the full object',async()=>{
+ await assert.rejects(readBoundedResponse(new Response('tiny',{headers:{'Content-Length':'100'}}),16),(error:any)=>error.statusCode===413);
+ let canceled=false;
+ const response=new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(10));controller.enqueue(new Uint8Array(10));},cancel(){canceled=true;}}));
+ await assert.rejects(readBoundedResponse(response,16),(error:any)=>error.statusCode===413);assert.equal(canceled,true);
+ assert.equal((await readBoundedResponse(new Response('fixture'),16)).toString(),'fixture');
+});
+test('signed uploads require a private capped bucket before creating capabilities',async()=>{
+ for(const configuration of [{...bucket,public:true},{...bucket,file_size_limit:null},{...bucket,file_size_limit:20*1024*1024}]){
+  let calls=0;const client=storage(()=>{calls++;return json(configuration);});
+  await assert.rejects(client.signUpload!(key),/private with a 10 MB file limit/);assert.equal(calls,1);
+ }
+});
+test('signed upload is restricted to the reserved key with overwrite disabled and redirects rejected',async()=>{
+ const calls:{url:URL;init:RequestInit}[]=[];
+ const client=storage((endpoint,init)=>{calls.push({url:endpoint,init});if(endpoint.pathname.includes('/bucket/'))return json(bucket);return json({url:`/object/upload/sign/${ORIGINALS_BUCKET}/${key}?token=controlled-upload-token`});});
+ const signed=await client.signUpload!(key);assert.equal(new URL(signed).pathname,`/storage/v1/object/upload/sign/${ORIGINALS_BUCKET}/${key}`);
+ assert.equal(calls.length,2);assert.equal(calls[1].init.method,'POST');assert.equal(calls[1].init.body,'{}');assert.equal(calls[1].init.redirect,'error');assert.notEqual(new Headers(calls[1].init.headers).get('x-upsert'),'true');
+ const bad=storage(endpoint=>endpoint.pathname.includes('/bucket/')?json(bucket):json({url:'https://untrusted.example/object?token=fixture'}));
+ await assert.rejects(bad.signUpload!(key),/unexpected signed URL/);
+});
+test('remote reads/writes/deletes use only fixed bucket paths and expose generic errors',async()=>{
+ const calls:{url:URL;init:RequestInit}[]=[];
+ const client=storage((endpoint,init)=>{calls.push({url:endpoint,init});if(endpoint.pathname.includes('/bucket/'))return json(bucket);if(init.method==='POST')return json({Key:key});if(init.method==='DELETE')return json([]);return new Response('owned bytes');});
+ await client.write(key,Buffer.from('owned bytes'));assert.equal(new Headers(calls[1].init.headers).get('Content-Type'),'application/octet-stream');assert.equal(new Headers(calls[1].init.headers).get('x-upsert'),'false');
+ assert.equal((await client.read(key)).toString(),'owned bytes');assert.equal(calls[2].url.pathname,`/storage/v1/object/authenticated/${ORIGINALS_BUCKET}/${key}`);
+ await client.remove(key);assert.deepEqual(JSON.parse(String(calls[3].init.body)),{prefixes:[key]});
+ const failed=storage(()=>json({message:'private provider diagnostics and secret-like material'},500));
+ await assert.rejects(failed.read(key),(error:any)=>error.statusCode===503&&!error.message.includes('diagnostics'));
+});
+test('download links expire after 60 seconds and sanitize Content-Disposition filenames',async()=>{
+ let expiry=0;
+ const client=storage((endpoint,init)=>{if(endpoint.pathname.includes('/bucket/'))return json(bucket);expiry=JSON.parse(String(init.body)).expiresIn;return json({signedURL:`/object/sign/${ORIGINALS_BUCKET}/${key}?token=controlled-download-token`});});
+ const signed=new URL(await client.signDownload!(key,'../../invoice\r\n".pdf'));
+ assert.equal(expiry,60);assert.equal(signed.origin,url);assert.equal(signed.searchParams.get('download'),'invoice".pdf');assert.ok(!signed.toString().includes('%0D'));assert.ok(!signed.toString().includes('%0A'));
+});
+test('storage diagnostics identify upstream operation/status without retaining provider secrets',async()=>{
+ for(const stage of ['bucket-read','upload-sign'] as const)for(const status of [401,403,500]){
+  const client=storage(endpoint=>stage==='upload-sign'&&endpoint.pathname.includes('/bucket/')?json(bucket):json({message:'PRIVATE provider body',url:'https://private.example/?token=PRIVATE'},status));
+  await assert.rejects(client.signUpload!(key),(error:any)=>{
+   assert.equal(error.statusCode,503);assert.deepEqual(storageDiagnostic(error),{storageCode:'STORAGE_UPSTREAM_HTTP',storageOperation:stage,upstreamStatus:status,storageProviderCode:'unclassified',credentialShape:'unknown',whitespacePresent:true,credentialJwtPayloadParseable:false});
+   assert.ok(!JSON.stringify(error).includes('PRIVATE'));assert.ok(!String(error).includes('PRIVATE'));return true;
+  });
+ }
+ const missing=storage(()=>json({statusCode:'404'},400));
+ await assert.rejects(missing.read(key),(error:any)=>{assert.equal(error.statusCode,404);assert.deepEqual(storageDiagnostic(error),{storageCode:'STORAGE_UPSTREAM_HTTP',storageOperation:'bucket-read',upstreamStatus:400,storageProviderCode:'unclassified',credentialShape:'unknown',whitespacePresent:true,credentialJwtPayloadParseable:false});return true;});
+});
+test('storage diagnostics distinguish transport, bucket, JSON and signed-URL failures',async()=>{
+ const cases=[
+  {client:storage(()=>{throw new Error('PRIVATE transport details');}),diagnostic:{storageCode:'STORAGE_UPSTREAM_NETWORK',storageOperation:'bucket-read'}},
+  {client:storage(()=>json({...bucket,public:true})),diagnostic:{storageCode:'STORAGE_BUCKET_POLICY',storageOperation:'bucket-read',upstreamStatus:200}},
+  {client:storage(()=>new Response('PRIVATE invalid JSON')),diagnostic:{storageCode:'STORAGE_RESPONSE_INVALID',storageOperation:'bucket-read',upstreamStatus:200}},
+  {client:storage(endpoint=>endpoint.pathname.includes('/bucket/')?json(bucket):new Response('PRIVATE invalid JSON')),diagnostic:{storageCode:'STORAGE_RESPONSE_INVALID',storageOperation:'upload-sign',upstreamStatus:200}},
+  {client:storage(endpoint=>endpoint.pathname.includes('/bucket/')?json(bucket):json({url:'https://private.example/?token=PRIVATE'})),diagnostic:{storageCode:'STORAGE_SIGNED_URL',storageOperation:'upload-sign'}},
+  {client:storage(endpoint=>endpoint.pathname.includes('/bucket/')?json(bucket):json(null)),diagnostic:{storageCode:'STORAGE_SIGNED_URL',storageOperation:'upload-sign'}},
+ ];
+ for(const {client,diagnostic} of cases)await assert.rejects(client.signUpload!(key),(error:any)=>{assert.equal(error.statusCode,503);assert.deepEqual(storageDiagnostic(error),diagnostic);assert.ok(!String(error).includes('PRIVATE'));return true;});
+});
+test('diagnostic allowlist rejects forged properties and never copies credential configuration',()=>{
+ assert.equal(storageDiagnostic(Object.assign(new Error('PRIVATE'),{storageCode:'PRIVATE',storageOperation:'PRIVATE',upstreamStatus:401})),undefined);
+ for(const [configuration,code] of [[{url:'PRIVATE invalid URL',serviceRoleKey:'PRIVATE'},'STORAGE_CONFIG_URL'],[{url,serviceRoleKey:''},'STORAGE_CONFIG_CREDENTIALS']] as const){
+  assert.throws(()=>createSupabaseStorage(configuration),(error:any)=>{assert.equal(error.statusCode,503);assert.deepEqual(storageDiagnostic(error),{storageCode:code});assert.equal(Object.isFrozen(storageDiagnostic(error)),true);assert.ok(!String(error).includes('PRIVATE'));return true;});
+ }
+});
+test('upstream diagnostics recognize only exact published codes from code or error fields',async()=>{
+ for(const [body,expected] of [
+  [{code:'InvalidJWT',message:'PRIVATE'},'InvalidJWT'],
+  [{error:'AccessDenied',message:'PRIVATE'},'AccessDenied'],
+  [{code:'PRIVATE arbitrary value',error:'InvalidRequest'},'InvalidRequest'],
+  [{code:'InvalidJWT PRIVATE',error:{code:'InvalidJWT'},message:'PRIVATE'},'unclassified'],
+  [{code:'constructor',error:'toString'},'unclassified'],
+  [null,'unclassified'],
+ ] as const){
+  await assert.rejects(storage(()=>json(body,400)).signUpload!(key),(error:any)=>{
+   assert.equal(error.statusCode,503);assert.equal(storageDiagnostic(error)?.storageProviderCode,expected);
+   assert.ok(!JSON.stringify(storageDiagnostic(error)).includes('PRIVATE'));return true;
+  });
+ }
+});
+test('credential diagnostics distinguish key shapes and expose only unverified claim booleans',async()=>{
+ const jwt=(payload:unknown)=>Buffer.from('{"alg":"HS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url')+'.synthetic-signature';
+ const examples=[
+  {credential:jwt({ref:'storage-fixture',exp:Math.floor(Date.now()/1000)+3600,role:'service_role',secret:'PRIVATE'}),expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:true,credentialProjectMatches:true,credentialExpired:false,roleMatchesServiceRole:true}},
+  {credential:jwt({ref:'PRIVATE-other-project',exp:1,role:'anon'}),expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:true,credentialProjectMatches:false,credentialExpired:true,roleMatchesServiceRole:false}},
+  {credential:jwt({ref:42,exp:'PRIVATE'}),expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:true}},
+  {credential:jwt({role:null}),expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:true,roleMatchesServiceRole:false}},
+  {credential:jwt(null),expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:false}},
+  {credential:'sb_secret_PRIVATE',expected:{credentialShape:'sb_secret',whitespacePresent:false,credentialJwtPayloadParseable:false}},
+  {credential:'\tsb_publishable_PRIVATE\n',expected:{credentialShape:'sb_publishable',whitespacePresent:true,credentialJwtPayloadParseable:false}},
+  {credential:'PRIVATE opaque key',expected:{credentialShape:'unknown',whitespacePresent:true,credentialJwtPayloadParseable:false}},
+  {credential:'aaa.not-json.bbb',expected:{credentialShape:'jwt',whitespacePresent:false,credentialJwtPayloadParseable:false}},
+  {credential:'a'.repeat(16_385),expected:{credentialShape:'unknown',whitespacePresent:false,credentialJwtPayloadParseable:false}},
+ ];
+ for(const {credential,expected} of examples){
+  const client=createSupabaseStorage({url,serviceRoleKey:credential,fetch:async()=>json({code:'InvalidJWT',message:'PRIVATE'},400)});
+  await assert.rejects(client.signUpload!(key),(error:any)=>{
+   assert.deepEqual(storageDiagnostic(error),{storageCode:'STORAGE_UPSTREAM_HTTP',storageOperation:'bucket-read',upstreamStatus:400,storageProviderCode:'InvalidJWT',...expected});
+   assert.ok(!JSON.stringify(storageDiagnostic(error)).includes('PRIVATE'));assert.ok(!String(error).includes(credential));return true;
+  });
+ }
+});
+test('credential hints trim surrounding whitespace without changing transport credentials',async()=>{
+ const jwt=Buffer.from('{"alg":"HS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify({ref:'storage-fixture',role:'service_role'})).toString('base64url')+'.synthetic-signature';
+ for(const credential of [` ${jwt}`,`${jwt} `,`${jwt}\n`,`\t${jwt}\r\n`]){
+  let transportChecked=false;
+  const client=createSupabaseStorage({url,serviceRoleKey:credential,fetch:async(_input,init)=>{
+   assert.equal((init!.headers as Record<string,string>).apikey,credential);
+   assert.equal((init!.headers as Record<string,string>).Authorization,`Bearer ${credential}`);
+   const normalizedHeaders=new Headers(init!.headers);
+   assert.equal(normalizedHeaders.get('apikey'),jwt);
+   assert.equal(normalizedHeaders.get('authorization')!.replace(/^Bearer\s+/i,''),jwt);
+   transportChecked=true;return json({code:'AccessDenied'},400);
+  }});
+  await assert.rejects(client.signUpload!(key),(error:any)=>{
+   assert.deepEqual(storageDiagnostic(error),{storageCode:'STORAGE_UPSTREAM_HTTP',storageOperation:'bucket-read',upstreamStatus:400,storageProviderCode:'AccessDenied',credentialShape:'jwt',whitespacePresent:true,credentialJwtPayloadParseable:true,credentialProjectMatches:true,roleMatchesServiceRole:true});return true;
+  });
+  assert.equal(transportChecked,true);
+ }
+});

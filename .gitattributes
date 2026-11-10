@@ -1,0 +1,2 @@
+# Email fixtures preserve exact RFC message bytes and CRLF line endings.
+*.eml -text whitespace=cr-at-eol
