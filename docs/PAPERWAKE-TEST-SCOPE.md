@@ -25,4 +25,6 @@ The [local manifest receipt from 9 November](evidence/paperwake-release-manifest
 
 The [10 November GitHub CI receipt](evidence/paperwake-ci-2026-11-10.json) records 474 passing tests, production packaging, isolated runtime/decoder checks and the controlled managed restore drill at its exact source revision. Real hosted invoice acceptance, account delivery, payment collection and operational recovery remain separate evidence.
 
+The later [signup-policy CI receipt](evidence/paperwake-ci-signup-policy-2026-11-10.json) records 480 passing tests and the same build/restore gates at `b0d5166`, including six added configuration/default-application acceptance tests. Test preload removes operator signup-policy settings after loading configuration so real terms cannot enter controlled fixtures; invalid real configuration is never silently cleared by application code.
+
 Rendered browser acceptance, real-provider invoice tests, delivered account emails, Stripe payment/webhook lifecycle tests and hosted retention are separate evidence. See [the Week 1 record](PAPERWAKE-WEEK-ONE-EVIDENCE.md) for the distinction between completed and outstanding checks.

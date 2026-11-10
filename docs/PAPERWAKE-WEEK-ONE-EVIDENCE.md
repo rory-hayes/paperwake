@@ -53,6 +53,8 @@ Configuration was **private invitation, preview enabled, mock billing, account-e
 
 The browser receipt, read-only probe receipt and screenshot remain private local artifacts. No account identifiers, credentials or personal data are published here. Hosted tenant-boundary, duplicate-accounting, scheduled recovery and retention acceptance remain separate unfinished checks.
 
+After the signup-policy release, a read-only hosted check at **2026-11-10 08:20:50 UTC** verified exact revision `b0d51665e93247164877c1642df612268875ef6f`: `/api/health` returned 200, `/api/ready` returned 200 with database/storage/restore OK, and `/api/auth/signup-terms` returned 200 with `{enabled:false,policy:null}`. This confirms the unconfigured preview remains available after deployment. It does not prove acceptance of configured owner-approved terms; no authenticated test mutation or policy activation was performed.
+
 ## Controlled automated checks
 
 Focused backend, usage, account and frontend tests cover concurrent fixed-invoice setup, invalid input rejection, per-workspace isolation, saved revision conflicts, exact decimals/identifiers, formula-safe CSV, upload ownership/hash binding, quotas, retry accounting and billing period handling. Provider and storage doubles used by those unit/integration tests are distinct from the real-provider browser check above.
@@ -61,6 +63,8 @@ The dated local invoice-release manifest passed **468 tests**, with zero failure
 
 [GitHub CI for `e6e97f4`](https://github.com/rory-hayes/paperwake/actions/runs/42778974759) completed successfully on 10 November: **474/474 release tests, zero failures or skips**, typecheck/production packaging, isolated runtime/decoder checks, and the managed encrypted backup/restore drill all passed. The [sanitized CI receipt](evidence/paperwake-ci-2026-11-10.json) records the exact revision and scope. The restore drill used its own temporary PostgreSQL cluster and controlled storage; it does not establish production backup scheduling or a restore from the live service.
 
+The subsequent [signup-policy release at `b0d5166`](https://github.com/rory-hayes/paperwake/actions/runs/42781567154) also passed the complete CI run: **480/480 tests, zero failures or skips**, production packaging, isolated runtime/decoder checks and all **29 named assertions** in the controlled managed restore drill. Its [separate sanitized receipt](evidence/paperwake-ci-signup-policy-2026-11-10.json) preserves the earlier release record. The six added tests cover the default application's configured signup policy, absent/invalid configuration, current acceptance and persisted/queued policy snapshots. This implements the runtime configuration path; no owner-approved terms were invented, installed or verified on the hosted app.
+
 ## In progress / not yet proved
 
 - Hosted account-boundary and duplicate/page-accounting checks beyond the single-invoice browser path.
@@ -68,6 +72,7 @@ The dated local invoice-release manifest passed **468 tests**, with zero failure
 - Verified transactional email delivery for signup, verification and password recovery.
 - Stripe test checkout/webhooks/cancellation/renewal, then correctly configured live billing.
 - Actual operator/support/policy configuration; no fictional business identity or tax registrations supplied.
+- Commercially eligible hosting before paid pilots: the current Vercel account uses Hobby, which [Vercel limits to personal, non-commercial use](https://vercel.com/docs/plans/hobby). A suitable plan or hosting choice is required; no upgrade or purchase has been authorized or performed.
 - Operational backup scheduling and recovery evidence for the deployed service.
 - Permissioned real customer samples, which the user will source.
 

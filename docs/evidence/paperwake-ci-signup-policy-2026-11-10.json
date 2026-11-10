@@ -1,0 +1,29 @@
+{
+  "kind": "github_ci_controlled_release_verification",
+  "date": "2026-11-10",
+  "runUrl": "https://github.com/rory-hayes/paperwake/actions/runs/42781567154",
+  "sourceRevision": "b0d51665e93247164877c1642df612268875ef6f",
+  "result": "success",
+  "releaseTests": {
+    "tests": 480,
+    "pass": 480,
+    "fail": 0,
+    "skipped": 0,
+    "durationMs": 84373.117382
+  },
+  "typecheckAndProductionPackage": "passed",
+  "isolatedRuntimeAndDecoders": "passed",
+  "managedEncryptedRestore": {
+    "result": "passed",
+    "namedAssertions": 29,
+    "storage": "controlled transport",
+    "database": "dedicated temporary PostgreSQL 17 cluster"
+  },
+  "limitations": [
+    "Controlled extraction, email and billing providers; not live provider lifecycle acceptance",
+    "Controlled managed restore is not a restore of the deployed service or evidence of its backup schedule",
+    "Hosted browser, scheduled recovery, retention and commercial readiness are tracked separately",
+    "No owner-approved signup policy has been configured or accepted in hosted verification by this test run"
+  ],
+  "additionalCoverage": "Six signup-policy configuration and default-application HTTP acceptance tests, using synthetic policy text only"
+}
