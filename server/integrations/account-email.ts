@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {config} from '../core/config.js';
 import type {WorkBudget} from '../core/work-budget.js';
 
-export type AccountEmailMessage={idempotencyKey:string;to:string;subject:string;text:string};
+export type AccountEmailMessage={idempotencyKey:string;to:string;subject:string;text:string;html?:string;replyTo?:string;templateVersion?:'paperwake-account-v1'};
 export type AccountEmailSender={send:(message:AccountEmailMessage,budget?:WorkBudget)=>Promise<{providerId:string}>};
 export type AccountEmailErrorCode='unavailable'|'invalid_message'|'temporary_failure'|'permanent_failure'|'timeout'|'cancelled'|'invalid_response';
 export class AccountEmailError extends Error{
@@ -21,6 +21,19 @@ export const accountEmailSubjects={
   email_verification:['Verify your Paperwake email','Verify your MaintainFlow email','Verify your Folio email'],
   invitation:['Join your Paperwake workspace','Join your MaintainFlow workspace','Join your Folio workspace'],
 } as const;
+
+export const accountEmailLimits={text:4096,html:6144,providerBody:12*1024,encryptedPayload:16*1024} as const;
+const legacyPayload=z.object({
+  to:email,subject:z.enum([...accountEmailSubjects.password_reset,...accountEmailSubjects.password_changed,...accountEmailSubjects.email_verification,...accountEmailSubjects.invitation]),
+  text:z.string().min(1).refine(value=>Buffer.byteLength(value)<=accountEmailLimits.text),
+}).strict();
+const paperwakePayload=legacyPayload.extend({
+  subject:z.enum(['Reset your Paperwake password','Your Paperwake password was changed','Verify your Paperwake email']),
+  html:z.string().min(1).refine(value=>Buffer.byteLength(value)<=accountEmailLimits.html),
+  replyTo:email.optional(),templateVersion:z.literal('paperwake-account-v1'),
+}).strict();
+/** Existing text-only envelopes remain valid and are never upgraded at dispatch. */
+export const accountEmailPayloadSchema=z.union([legacyPayload,paperwakePayload]);
 
 /** Use configured application identity, never request Host or a supplied redirect. */
 export function trustedAccountOrigin(environment:Environment=process.env):string|undefined{
@@ -84,12 +97,18 @@ export function createAccountEmailSender(environment:Environment=process.env,dep
   const transport=dependencies.fetchImpl??globalThis.fetch;
   return {async send(message,budget={}){
     if(!message||typeof message.idempotencyKey!=='string'||!message.idempotencyKey.startsWith('folio-account-email/')||!uuid.safeParse(message.idempotencyKey.slice('folio-account-email/'.length)).success||
-      !email.safeParse(message.to).success||!Object.values(accountEmailSubjects).some(subjects=>subjects.some(subject=>subject===message.subject))||typeof message.text!=='string'||message.text.length<1||Buffer.byteLength(message.text)>4096){
+      typeof message!=='object'){
       throw new AccountEmailError('invalid_message',false);
     }
-    const brand=message.subject.includes('Paperwake')?'Paperwake':message.subject.includes('Folio')?'Folio':'MaintainFlow';
-    const body=JSON.stringify({from:`${brand} <${settings.from}>`,to:[message.to],subject:message.subject,text:message.text});
-    if(Buffer.byteLength(body)>8192)throw new AccountEmailError('invalid_message',false);
+    const {idempotencyKey:_,...candidate}=message;
+    const parsed=accountEmailPayloadSchema.safeParse(candidate);
+    if(!parsed.success)throw new AccountEmailError('invalid_message',false);
+    const payload=parsed.data;
+    const brand=payload.subject.includes('Paperwake')?'Paperwake':payload.subject.includes('Folio')?'Folio':'MaintainFlow';
+    // Preserve property order and omit new fields for byte-identical old retries.
+    const body=JSON.stringify({from:`${brand} <${settings.from}>`,to:[payload.to],subject:payload.subject,text:payload.text,
+      ...('html' in payload?{html:payload.html,...(payload.replyTo?{reply_to:payload.replyTo}:{})}:{})});
+    if(Buffer.byteLength(body)>('html' in payload?accountEmailLimits.providerBody:8192))throw new AccountEmailError('invalid_message',false);
     if(budget.signal?.aborted)throw new AccountEmailError('cancelled',true);
     const remaining=budget.deadlineAt===undefined?configuredTimeout:Math.min(configuredTimeout,budget.deadlineAt-Date.now());
     if(!Number.isFinite(remaining)||remaining<=0)throw new AccountEmailError('timeout',true);

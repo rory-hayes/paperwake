@@ -6,6 +6,7 @@ import {adminPool,transaction,badRequest} from './db.js';
 import {hashPassword,hashToken,newToken,verifyPassword} from './auth.js';
 import {decryptSecret,encryptSecret,privateIdentifier} from '../integrations/secrets.js';
 import {accountEmailStatus,trustedAccountOrigin} from '../integrations/account-email.js';
+import {encryptedPaperwakeAccountEmail} from './account-email-content.js';
 
 export const recoveryAccepted = Object.freeze({accepted:true,message:'If an account uses this email, a password reset link will be sent shortly.'});
 export const invalidResetMessage = 'This password reset link is invalid or has expired. Request a new link.';
@@ -37,9 +38,9 @@ async function grantAddress(c:PoolClient,email:string){
 }
 
 /** The user row must already be locked. No provider call takes place here. */
-export async function enqueuePasswordChanged(c:PoolClient,user:{id:string;email:string}){
+export async function enqueuePasswordChanged(c:PoolClient,user:{id:string;email:string},passwordChangeSource?:'reset'|'settings'){
  const id=randomUUID();
- const payload=encryptSecret(JSON.stringify({to:user.email,subject:'Your Paperwake password was changed',text:'Your Paperwake password was changed. Browser sessions were signed out, except the current session when you changed it in Settings. If you did not make this change, use Forgot password on the Paperwake sign-in page.'}));
+ const payload=encryptedPaperwakeAccountEmail(user.email,{kind:'password_changed',passwordChangeSource});
  await c.query(`INSERT INTO account_email_outbox(id,user_id,kind,payload_ciphertext,expires_at) VALUES($1,$2,'password_changed',$3,clock_timestamp()+interval '24 hours')`,[id,user.id,payload]);
 }
 
@@ -84,7 +85,7 @@ export async function processOneAccountRecoveryRequest(){
   await c.query(`INSERT INTO account_recovery_tokens(id,user_id,token_hash,credential_digest,expires_at)
    VALUES($1,$2,$3,$4,$5)`,[tokenId,user.id,hashToken(token),hashToken(user.password_hash),request.expires_at]);
   const link=new URL('/reset-password',origin);link.hash=`token=${token}`;
-  const encrypted=encryptSecret(JSON.stringify({to:user.email,subject:'Reset your Paperwake password',text:`A password reset was requested for your Paperwake account. Open this link within 30 minutes of your request to choose a new password:\n\n${link.href}\n\nIf you did not request this, you can ignore this email. Your password has not changed.`}));
+  const encrypted=encryptedPaperwakeAccountEmail(user.email,{kind:'password_reset',actionUrl:link.href});
   await c.query(`INSERT INTO account_email_outbox(id,user_id,token_id,kind,payload_ciphertext,expires_at)
    VALUES($1,$2,$3,'password_reset',$4,$5)`,[outboxId,user.id,tokenId,encrypted,request.expires_at]);
   await c.query("INSERT INTO account_security_events(user_id,action) VALUES($1,'password_reset_requested')",[user.id]);
@@ -109,7 +110,7 @@ export async function completePasswordReset(token:string,newPassword:string){
   await c.query('UPDATE users SET password_hash=$1,password_changed_at=clock_timestamp() WHERE id=$2',[passwordHash,user.id]);
   const sessions=(await c.query('DELETE FROM sessions WHERE user_id=$1',[user.id])).rowCount??0;
   const tokens=await invalidateRecovery(c,user.id)+await invalidateEmailVerification(c,user.id);
-  await enqueuePasswordChanged(c,user);
+  await enqueuePasswordChanged(c,user,'reset');
   await c.query(`INSERT INTO account_security_events(user_id,action,sessions_revoked,tokens_invalidated) VALUES($1,'password_reset_completed',$2,$3)`,[user.id,sessions,tokens]);
  });
  return {ok:true};
@@ -127,7 +128,7 @@ export async function changeAccountPassword(userId:string,sessionToken:string,cu
   await c.query('UPDATE users SET password_hash=$1,password_changed_at=clock_timestamp() WHERE id=$2',[passwordHash,userId]);
   const sessions=(await c.query('DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2',[userId,sessionHash])).rowCount??0;
   const tokens=await invalidateRecovery(c,userId)+await invalidateEmailVerification(c,userId);
-  await enqueuePasswordChanged(c,user);
+  await enqueuePasswordChanged(c,user,'settings');
   await c.query(`INSERT INTO account_security_events(user_id,action,sessions_revoked,tokens_invalidated) VALUES($1,'password_changed',$2,$3)`,[userId,sessions,tokens]);
  });
  return {ok:true};

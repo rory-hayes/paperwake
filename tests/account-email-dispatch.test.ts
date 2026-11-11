@@ -134,9 +134,10 @@ for(const kind of ['password_reset','password_changed','email_verification'] as 
    else await enqueueEmailVerification(c,user,new Date(Date.now()+60_000));
   });
   const row=(await adminPool.query('SELECT * FROM account_email_outbox WHERE user_id=$1 AND kind=$2',[user.id,kind])).rows[0];
-  const payload=JSON.parse(decryptSecret(row.payload_ciphertext));
-  assert.match(payload.subject,/Paperwake/);assert.match(payload.text,/Paperwake/);
-  payload.subject=payload.subject.replaceAll('Paperwake','Folio');payload.text=payload.text.replaceAll('Paperwake','Folio');
+  const current=JSON.parse(decryptSecret(row.payload_ciphertext));
+  assert.match(current.subject,/Paperwake/);assert.match(current.text,/Paperwake/);
+  // Simulate the old persisted shape, without new HTML/version/reply-to fields.
+  const payload={to:current.to,subject:current.subject.replaceAll('Paperwake','Folio'),text:current.text.replaceAll('Paperwake','Folio')};
   const ciphertext=encryptSecret(JSON.stringify(payload));
   await adminPool.query('UPDATE account_email_outbox SET payload_ciphertext=$2 WHERE id=$1',[row.id,ciphertext]);
   setAccountEmailSenderForTests({async send(message){calls.push(message);if(calls.length===1)throw new AccountEmailError('temporary_failure',true);return {providerId:randomUUID()};}});
@@ -148,3 +149,65 @@ for(const kind of ['password_reset','password_changed','email_verification'] as 
   assert.deepEqual((await adminPool.query('SELECT state,attempts,payload_ciphertext FROM account_email_outbox WHERE id=$1',[row.id])).rows[0],{state:'accepted',attempts:2,payload_ciphertext:null});
  });
 }
+
+for(const kind of ['password_reset','password_changed','email_verification'] as const){
+ test(`new ${kind} freezes HTML, text and reply-to at enqueue across uncertain retries`,async()=>{
+  const originalSupport=process.env.FOLIO_SUPPORT_EMAIL;
+  const user=await fixture(),calls:AccountEmailMessage[]=[];
+  try{
+   process.env.FOLIO_SUPPORT_EMAIL='queued-support@example.test';
+   if(kind==='password_reset'){await requestPasswordReset(user.email);assert.equal(await processOneAccountRecoveryRequest(),true);}
+   else await transaction(adminPool,async c=>{
+    await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[user.id]);
+    if(kind==='password_changed')await enqueuePasswordChanged(c,user,'settings');
+    else await enqueueEmailVerification(c,user,new Date(Date.now()+60_000));
+   });
+   const row=(await adminPool.query('SELECT * FROM account_email_outbox WHERE user_id=$1 AND kind=$2',[user.id,kind])).rows[0];
+   const payload=JSON.parse(decryptSecret(row.payload_ciphertext));
+   assert.equal(payload.templateVersion,'paperwake-account-v1');assert.equal(payload.replyTo,'queued-support@example.test');
+   assert.match(payload.html,/<!doctype html>/i);assert.match(payload.text,/Paperwake/);
+   assert.ok(Buffer.byteLength(payload.html)<=6144);assert.ok(Buffer.byteLength(payload.text)<=4096);assert.ok(Buffer.byteLength(row.payload_ciphertext)<=16384);
+   if(kind==='password_changed'){assert.match(payload.text,/other browser sessions/);assert.match(payload.text,/session you used to change your password remains signed in/);assert.doesNotMatch(payload.html,/#token=/);}
+   else{
+    const link=payload.text.match(/https?:\/\/[^\s]+/)![0];const url=new URL(link);
+    assert.equal(url.origin,config.origin);assert.equal(url.search,'');assert.match(url.hash,/^#token=[A-Za-z0-9_-]{43}$/);
+    assert.equal(url.pathname,kind==='password_reset'?'/reset-password':'/verify-email/confirm');assert.ok(payload.html.includes(`href="${link}"`));
+   }
+   process.env.FOLIO_SUPPORT_EMAIL='future-support@example.test';
+   setAccountEmailSenderForTests({async send(message){calls.push(message);if(calls.length===1)throw new AccountEmailError('temporary_failure',true);return {providerId:randomUUID()};}});
+   assert.equal(await processOneAccountEmail(),true);
+   const retry=(await adminPool.query('SELECT state,payload_ciphertext,expires_at FROM account_email_outbox WHERE id=$1',[row.id])).rows[0];
+   assert.equal(retry.state,'pending');assert.equal(retry.payload_ciphertext,row.payload_ciphertext);assert.equal(retry.expires_at.getTime(),row.expires_at.getTime());
+   await adminPool.query('UPDATE account_email_outbox SET available_at=clock_timestamp() WHERE id=$1',[row.id]);
+   assert.equal(await processOneAccountEmail(),true);
+   const expected={...payload,idempotencyKey:`folio-account-email/${row.id}`};assert.deepEqual(calls,[expected,expected]);
+   assert.deepEqual((await adminPool.query('SELECT state,attempts,payload_ciphertext FROM account_email_outbox WHERE id=$1',[row.id])).rows[0],{state:'accepted',attempts:2,payload_ciphertext:null});
+  }finally{if(originalSupport===undefined)delete process.env.FOLIO_SUPPORT_EMAIL;else process.env.FOLIO_SUPPORT_EMAIL=originalSupport;}
+ });
+}
+
+test('malformed versioned HTML is rejected before delivery and owned verification token is revoked',async()=>{
+ const user=await fixture();
+ await transaction(adminPool,async c=>{await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[user.id]);await enqueueEmailVerification(c,user,new Date(Date.now()+60_000));});
+ const row=(await adminPool.query("SELECT * FROM account_email_outbox WHERE user_id=$1 AND kind='email_verification'",[user.id])).rows[0];
+ const payload=JSON.parse(decryptSecret(row.payload_ciphertext));payload.replyTo='support@example.test\r\nBcc: injected@example.test';
+ await adminPool.query('UPDATE account_email_outbox SET payload_ciphertext=$2 WHERE id=$1',[row.id,encryptSecret(JSON.stringify(payload))]);
+ assert.equal(await processOneAccountEmail(),true);assert.equal(sent.length,0);
+ assert.deepEqual((await adminPool.query('SELECT state,failure_code,payload_ciphertext FROM account_email_outbox WHERE id=$1',[row.id])).rows[0],{state:'failed',failure_code:'invalid_message',payload_ciphertext:null});
+ assert.equal((await adminPool.query('SELECT count(*)::int n FROM email_verification_tokens WHERE user_id=$1',[user.id])).rows[0].n,0);
+});
+
+test('password-change notice remains queueable without an available sender or trusted origin',async()=>{
+ const previous={origin:process.env.APP_ORIGIN,enabled:process.env.FOLIO_AUTH_EMAIL_ENABLED};
+ const user=await fixture();
+ try{
+  process.env.APP_ORIGIN='https://invalid.example.test/redirect';process.env.FOLIO_AUTH_EMAIL_ENABLED='false';
+  await transaction(adminPool,async c=>{await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[user.id]);await enqueuePasswordChanged(c,user,'reset');});
+  const row=(await adminPool.query("SELECT payload_ciphertext FROM account_email_outbox WHERE user_id=$1 AND kind='password_changed'",[user.id])).rows[0];
+  const payload=JSON.parse(decryptSecret(row.payload_ciphertext));
+  assert.equal(payload.templateVersion,'paperwake-account-v1');assert.match(payload.text,/All previous browser sessions/);
+  assert.doesNotMatch(payload.html,/href="https?:/);assert.doesNotMatch(payload.text,/https?:/);
+ }finally{
+  for(const [key,value] of [['APP_ORIGIN',previous.origin],['FOLIO_AUTH_EMAIL_ENABLED',previous.enabled]] as const){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+ }
+});

@@ -114,3 +114,40 @@ test('new Paperwake messages use the Paperwake sender while durable legacy retri
  for(const brand of ['Paperwake','MaintainFlow','Folio'])await sender.send({...message(),subject:`Reset your ${brand} password`});
  assert.deepEqual(payloads.map(p=>p.from),['Paperwake <recovery@example.test>','MaintainFlow <recovery@example.test>','Folio <recovery@example.test>']);
 });
+
+test('new HTML and text are sent together with frozen reply-to and identical retry bytes',async()=>{
+ const requests:{body:string;key:string|null}[]=[];
+ const payload:AccountEmailMessage={...message(),subject:'Verify your Paperwake email',text:'Use the original verification link.',html:'<!doctype html><html><body><p>Use the original verification link.</p></body></html>',replyTo:'support@example.test',templateVersion:'paperwake-account-v1'};
+ const sender=createAccountEmailSender(environment,{fetchImpl:(async(_url,options)=>{
+  requests.push({body:String(options?.body),key:new Headers(options?.headers).get('idempotency-key')});
+  if(requests.length===1)throw new Error('Uncertain HTML acknowledgement');return success();
+ }) as typeof fetch})!;
+ await assert.rejects(sender.send(payload),fails('temporary_failure',true));await sender.send(payload);
+ assert.deepEqual(requests[0],requests[1]);
+ assert.deepEqual(JSON.parse(requests[0].body),{from:'Paperwake <recovery@example.test>',to:[payload.to],subject:payload.subject,text:payload.text,html:payload.html,reply_to:payload.replyTo});
+ assert.equal(requests[0].key,payload.idempotencyKey);assert.ok(!requests[0].body.includes('templateVersion'));
+});
+
+test('HTML envelope versions, byte limits and reply-to are validated before transport',async()=>{
+ let calls=0;const sender=createAccountEmailSender(environment,{fetchImpl:(async()=>{calls++;return success();}) as typeof fetch})!;
+ const rich:AccountEmailMessage={...message(),subject:'Reset your Paperwake password',html:'<p>Owned reset fixture</p>',templateVersion:'paperwake-account-v1'};
+ for(const override of [{html:''},{html:'x'.repeat(6145)},{html:'é'.repeat(3073)},{html:null},{html:undefined},{templateVersion:undefined},{templateVersion:'unknown'},
+  {replyTo:'a@example.test\r\nBcc: b@example.test'},{replyTo:''},{subject:'Reset your Folio password'},{unexpected:'not supported'},
+  {html:'"'.repeat(6144),text:'"'.repeat(4096)}]){
+  await assert.rejects(sender.send({...rich,...override} as AccountEmailMessage),fails('invalid_message',false));
+ }
+ for(const override of [{replyTo:'support@example.test'},{templateVersion:'paperwake-account-v1'},{html:'<p>Not a complete versioned envelope</p>'},{text:'"'.repeat(4096)}]){
+  await assert.rejects(sender.send({...message(),...override} as AccountEmailMessage),fails('invalid_message',false));
+ }
+ assert.equal(calls,0);
+ await sender.send(rich);assert.equal(calls,1);
+});
+
+test('every legacy brand remains text-only even when a support address is configured',async()=>{
+ const requests:string[]=[];
+ const sender=createAccountEmailSender({...environment,FOLIO_SUPPORT_EMAIL:'new-support@example.test'},{fetchImpl:(async(_url,options)=>{requests.push(String(options?.body));return success();}) as typeof fetch})!;
+ for(const brand of ['Paperwake','MaintainFlow','Folio']){
+  const payload={...message(),subject:`Reset your ${brand} password`};await sender.send(payload);
+  assert.equal(requests.at(-1),JSON.stringify({from:`${brand} <recovery@example.test>`,to:[payload.to],subject:payload.subject,text:payload.text}));
+ }
+});
