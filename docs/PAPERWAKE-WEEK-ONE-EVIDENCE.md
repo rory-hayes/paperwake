@@ -127,9 +127,16 @@ The same subscription was resumed through the Portal. A paid EUR 49 renewal roll
 
 The fixture consumed zero pages, so the hosted check proves period rollover, not spent-quota reset. The latter retains controlled-test coverage. Future paid periods correctly remained unavailable against real database time; database time and entitlements were not manually changed. Approved terms capture, tax behavior and live payment collection remain unverified. The global test-clock setting was removed at 21:40:51 UTC; replacement deployment `dpl_223TmN7E8e7wHa9HTbLQHAz79dBx` on the same source passed nine configuration, health and readiness checks at 21:43:00.260 UTC. The existing clock and canceled fixture were preserved. Prior invoice, account-boundary, recovery, retention and backup evidence remains tied to its separately recorded revisions.
 
+## Account-email acceptance, 11 November 2026
+
+The owner-approved dedicated Resend sender is configured on deployment `dpl_8hWBL6YcF47BzjMHnKHYUkkUvsPm`, source `d9753f37046cea443b5ba057682ef83d232c58f9`, with required verification for new signups. Private invitations and Stripe test mode remain enabled. One fresh synthetic Gmail alias received all four expected messages: initial verification, verification resend, password reset and the automatic changed-password notice. All four were in the inbox with SPF, DKIM and DMARC passing. [Canonical email record](PAPERWAKE-EMAIL-ACCEPTANCE-2026-11-11.md), [twelve-check receipt](evidence/paperwake-email-acceptance-2026-11-11.json).
+
+Signup returned no session; unverified sign-in was blocked, the received resend link verified the account, and both verification tokens were subsequently rejected. The user completed the reset separately at 19:12:40.768 UTC. The scripted reset stopped before mutation because the previous session was already revoked; that failed attempt is preserved. Follow-on HTTP checks passed: old session/password rejected, supplied current password accepted, consumed reset token rejected and the test session logged out. Final observation at 19:17:03.971 UTC found exactly four accepted messages and no outstanding requests, fixture sessions or fixture tokens. Browser link rendering/token-fragment removal and used-verification-link rejection were observed separately; the agent did not observe the reset submission.
+
+Three obsolete API-key references were subsequently removed from the verification/reset copy. Sixteen focused UI tests and the production build passed locally; the full suite was not rerun locally for this copy-only change, and no new deployment is asserted here. Gmail delivery for this one alias does not guarantee deliverability elsewhere, and expired-link handling retains controlled-test coverage. Earlier acceptance keeps its recorded revisions.
+
 ## In progress / not yet proved
 
-- Verified transactional email delivery for signup, verification and password recovery.
 - Approved signup/Checkout terms capture, chosen tax behavior and correctly configured live billing. Test Checkout, signed-webhook reconciliation, period rollover, failed-renewal/same-invoice recovery, terminal cancellation and actual event replay are verified above; spent-quota reset remains controlled-test coverage only.
 - Actual operator/support/policy configuration; no fictional business identity or tax registrations supplied.
 - Commercially eligible hosting before paid pilots: the current Vercel account uses Hobby, which [Vercel limits to personal, non-commercial use](https://vercel.com/docs/plans/hobby). A suitable plan or hosting choice is required; no upgrade or purchase has been authorized or performed.
@@ -138,7 +145,7 @@ The fixture consumed zero pages, so the hosted check proves period rollover, not
 
 ## Release decision
 
-Not yet paid-launch ready. The hosted preview's synthetic invoice workflow, account boundaries, duplicate accounting, seeded expired-lease recovery and document/run/original retention path are verified within the limits above. Actual Stripe test Checkout and the bounded renewal/failure/recovery/cancellation lifecycle now pass. Live/tax configuration, approved terms capture and unverified account-email delivery still prevent a complete paid-launch claim. Commercial hosting eligibility, operator-approved policies and operational backup acceptance also remain open. Do not start charging customers or describe the complete hosted service as ready until those checks pass. No customer outreach was sent.
+Not yet paid-launch ready. The hosted preview's synthetic invoice workflow, account boundaries, duplicate accounting, seeded expired-lease recovery and document/run/original retention path are verified within the limits above. Actual Stripe test Checkout, the bounded renewal/failure/recovery/cancellation lifecycle and the four-message account-email flow now pass. Live/tax configuration and approved terms capture still prevent a complete paid-launch claim. Commercial hosting eligibility, operator-approved policies, operational backups and permissioned real-invoice validation also remain open. Do not start charging customers or describe the complete hosted service as ready until those checks pass. No customer outreach was sent.
 
 ## Operator safeguards
 

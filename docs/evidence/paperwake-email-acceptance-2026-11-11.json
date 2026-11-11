@@ -1,0 +1,156 @@
+{
+  "date": "2026-11-11",
+  "sourceRevision": "d9753f37046cea443b5ba057682ef83d232c58f9",
+  "deploymentId": "dpl_8hWBL6YcF47BzjMHnKHYUkkUvsPm",
+  "origin": "https://paperwake-gamma.vercel.app",
+  "scope": "One fresh synthetic Gmail alias, approved sender, real delivery and mixed HTTP/user-completed account flow",
+  "configured": {
+    "domain": "maintainflow.io",
+    "sender": "accounts@maintainflow.io",
+    "permission": "sending_access",
+    "emailVerificationRequired": true,
+    "privatePreview": true,
+    "stripeMode": "test"
+  },
+  "authorizedEmailCap": 6,
+  "actualMessages": 4,
+  "checks": {
+    "freshAccountAndEmptyInitialQueues": true,
+    "signupWithoutSession": true,
+    "unverifiedSigninRejected": true,
+    "receivedResendLinkVerified": true,
+    "bothVerificationTokensRejectedAfterUse": true,
+    "userCompletedResetConfirmed": true,
+    "oldPasswordAndSessionRejected": true,
+    "updatedPasswordSigninAndConsumedResetRejection": true,
+    "fourProviderAcceptedMessages": true,
+    "fourGmailInboxMessages": true,
+    "mailAuthenticationPass": true,
+    "noOutstandingQueues": true
+  },
+  "passed": true,
+  "messages": [
+    {
+      "kind": "initial_verification",
+      "inbox": true,
+      "spam": false,
+      "receivedAt": "2026-11-11T19:08:04.000Z",
+      "authentication": [
+        {
+          "spfPass": true,
+          "dkimPass": true,
+          "dmarcPass": true
+        }
+      ]
+    },
+    {
+      "kind": "resent_verification",
+      "inbox": true,
+      "spam": false,
+      "receivedAt": "2026-11-11T19:10:04.000Z",
+      "authentication": [
+        {
+          "spfPass": true,
+          "dkimPass": true,
+          "dmarcPass": true
+        }
+      ]
+    },
+    {
+      "kind": "password_reset",
+      "inbox": true,
+      "spam": false,
+      "receivedAt": "2026-11-11T19:12:03.000Z",
+      "authentication": [
+        {
+          "spfPass": true,
+          "dkimPass": true,
+          "dmarcPass": true
+        }
+      ]
+    },
+    {
+      "kind": "password_changed",
+      "inbox": true,
+      "spam": false,
+      "receivedAt": "2026-11-11T19:13:02.000Z",
+      "authentication": [
+        {
+          "spfPass": true,
+          "dkimPass": true,
+          "dmarcPass": true
+        }
+      ]
+    }
+  ],
+  "reset": {
+    "completion": "user_completed",
+    "completedAt": "2026-11-11T19:12:40.768Z",
+    "scriptedAttempt": {
+      "stoppedBeforeMutation": true,
+      "reason": "pre_reset_session_not_valid",
+      "preservedAsFailedAttempt": true
+    },
+    "reconciliation": [
+      {
+        "check": "user_completed_reset_reconciled_with_received_token_and_supplied_password",
+        "passed": true,
+        "passwordChangePerformedByHelper": false,
+        "oldSessionStatus": 401,
+        "oldPasswordStatus": 401,
+        "suppliedPasswordStatus": 200,
+        "replayStatus": 400,
+        "observedMessages": 4
+      },
+      {
+        "check": "reconciliation_added_no_email_and_logged_out",
+        "passed": true,
+        "totalMessages": 4,
+        "activeSessions": 0
+      }
+    ],
+    "finishedAt": "2026-11-11T19:17:02.711Z"
+  },
+  "browser": {
+    "verificationLinkRendered": true,
+    "verificationFragmentRemoved": true,
+    "usedVerificationLinkRejected": true,
+    "resetLinkRendered": true,
+    "resetFragmentRemoved": true,
+    "resetSubmissionObservedByAssistant": false,
+    "updatedPasswordSigninReachedInvoiceWorkspace": true,
+    "verifiedAccountStatusRendered": true,
+    "followOnObservationAt": "2026-11-11T19:20:25.227Z"
+  },
+  "finalObservation": {
+    "at": "2026-11-11T19:17:03.971Z",
+    "verified": true,
+    "activeSessions": 0,
+    "remainingRecoveryTokens": 0,
+    "remainingVerificationTokens": 0,
+    "outstanding": {
+      "registration": 0,
+      "recovery": 0,
+      "verification": 0,
+      "account_outstanding": 0,
+      "invitation_outstanding": 0
+    }
+  },
+  "limitations": [
+    "One Gmail inbox and one synthetic alias; not a cross-provider deliverability guarantee.",
+    "Signup and verification completion used HTTP; the user completed the reset independently before the scripted reset attempt. Browser link rendering and verification replay were observed separately.",
+    "The sending key is configured without Reply-To; displayed support contact is separate.",
+    "Existing preview accounts were not retroactively forced to verify.",
+    "No live payment, customer outreach, real invoice accuracy or paid-launch readiness is established."
+  ],
+  "followOnCopyFix": {
+    "description": "Remove three references to API-key controls absent from the invoice MVP.",
+    "behaviorChanged": false,
+    "focusedUiTests": {
+      "passed": 16,
+      "failed": 0
+    },
+    "buildPassed": true,
+    "fullSuiteRerun": false
+  }
+}

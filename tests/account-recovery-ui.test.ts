@@ -49,7 +49,8 @@ test('direct fragment capture removes the token before rendering, without puttin
   assert.doesNotMatch(html,new RegExp(syntheticToken));
   assert.doesNotMatch(html,/type="hidden"|name="token"|#token=|token=/);
   assert.match(html,/<meta name="referrer" content="no-referrer"/);
-  assert.match(html,/API keys remain separately revocable in Settings/);
+  assert.match(html,/Changing your password signs out all browser sessions\./);
+  assert.doesNotMatch(html,/API keys/);
   capture('');
 });
 

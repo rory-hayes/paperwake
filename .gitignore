@@ -14,6 +14,7 @@ dist/
 !/docs/PAPERWAKE-WEEK-ONE-EVIDENCE.md
 !/docs/PAPERWAKE-HOSTED-WORKER-VERIFICATION.md
 !/docs/PAPERWAKE-STRIPE-TEST-2026-11-10.md
+!/docs/PAPERWAKE-EMAIL-ACCEPTANCE-2026-11-11.md
 !/docs/PAPERWAKE-PUBLIC-REPOSITORY.md
 !/docs/BACKUP-RESTORE.md
 !/docs/UNIT-ECONOMICS.md
@@ -29,6 +30,7 @@ dist/
 !/docs/evidence/paperwake-hosted-restore-2026-11-10.json
 !/docs/evidence/paperwake-stripe-test-2026-11-10.json
 !/docs/evidence/paperwake-stripe-lifecycle-2026-11-10.json
+!/docs/evidence/paperwake-email-acceptance-2026-11-11.json
 .local/
 .vercel/
 coverage/
