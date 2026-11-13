@@ -147,7 +147,7 @@ test('the real adapter retains paid cost capacity for accepted canceled work wit
  const paid=await fixture('test');await adminPool.query("update workspaces set plan=plan-'subscriptionId'-'periodStart'-'periodEnd'||'{\"id\":\"explore\",\"monthlyPages\":10}'::jsonb where id=$1",[paid.workspaceId]);
  const trial=await anotherTrial(paid);await consumedTrialBudget(paid.workspaceId);let httpCalls=0;
  setExtractionProvider(createOpenAIProvider({apiKey:'owned-synthetic-key',fetch:(async()=>{
-  httpCalls++;return Response.json({id:'resp_owned_paid_grant',model:openAIExtraction.model,status:'completed',output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues:{...values,invoice_date:'9 November 2026'},evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLineItemCount:2,allPagesRead:true}})}]}],usage:{input_tokens:100,output_tokens:20,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}});
+  httpCalls++;return Response.json({id:'resp_owned_paid_grant',model:openAIExtraction.model,status:'completed',output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues:{...values,invoice_date:'9 November 2026'},evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:2,allPagesRead:true}})}]}],usage:{input_tokens:100,output_tokens:20,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}});
  }) as typeof fetch}));
  try{
   assert.equal(await processOneCoreJob(trial.jobId),true);assert.equal(httpCalls,0,'A trial cannot borrow another queued paid grant in its workspace');

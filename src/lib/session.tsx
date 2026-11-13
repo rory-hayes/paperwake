@@ -4,7 +4,7 @@ import {ApiError,api,post,workspaceId} from './api';
 import type {Role} from '../../shared/types';
 export type Workspace={id:string;name:string;role:Role;settings:Record<string,unknown>;plan:{id?:string;name:string;monthlyPages:number;maxParsers:number;maxConcurrent:number}};
 export type Session={user:{id:string;name:string;email:string;emailVerifiedAt:string|null;emailVerificationRequired:boolean};workspace:Workspace;workspaces:Workspace[]};
-type SessionValue={data?:Session;loading:boolean;error?:Error;refresh:()=>Promise<void>;select:(id:string)=>Promise<void>;logout:()=>Promise<void>};
+type SessionValue={data?:Session;loading:boolean;error?:Error;refresh:()=>Promise<void>;select:(id:string)=>Promise<void>;logout:(beforeNavigation?:()=>void)=>Promise<void>};
 const Context=createContext<SessionValue>(null!);
 export function SessionProvider({children}:{children:ReactNode}){
   const client=useQueryClient();
@@ -23,7 +23,7 @@ export function SessionProvider({children}:{children:ReactNode}){
     await client.cancelQueries();sessionStorage.setItem('folio.workspace',id);client.clear();
     client.setQueryData(['session',id],session);setSelectedWorkspace(id);
   }
-  async function logout(){await post('/api/auth/logout');sessionStorage.removeItem('folio.workspace');client.clear();window.location.assign('/sign-in');}
+  async function logout(beforeNavigation?:()=>void){await post('/api/auth/logout');beforeNavigation?.();sessionStorage.removeItem('folio.workspace');client.clear();window.location.assign('/sign-in');}
   const signedOut=query.error instanceof ApiError&&query.error.status===401;
   return <Context.Provider value={{data:signedOut?undefined:query.data,loading:query.isPending,error:query.error&&!signedOut?query.error:undefined,refresh,select,logout}}>{children}</Context.Provider>;
 }

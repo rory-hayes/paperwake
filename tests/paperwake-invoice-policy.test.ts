@@ -63,9 +63,9 @@ test('invoice CSV preserves exact identifiers and signed decimals while escaping
  await assert.rejects(renderExport([record],{format:'csv',workflow:'invoice',columns:[{source:'private',label:'Private'}]}),/fixed source/);
 });
 test('invoice provider rejects reported omissions, multi-invoice sources and inconsistent row counts',async()=>{
- const assessment={documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true};
+ const assessment={documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:1,allPagesRead:true};
  const extract=async(invoiceAssessment:unknown)=>createOpenAIProvider({apiKey:'owned-fixture',fetch:(async()=>Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues:values,evidence:[],invoiceAssessment})}]}]})) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Owned synthetic supplier invoice'}],schema:invoiceSchema,instructions:'Extract invoice',locale:'en-IE'});
- const result=await extract(assessment);assert.equal(result.promptVersion,'paperwake-invoice-v2');assert.equal(result.normalizedValues.total,'9007199254740993.10');
+ const result=await extract(assessment);assert.equal(result.promptVersion,'paperwake-invoice-v3');assert.equal(result.normalizedValues.total,'9007199254740993.10');
  assert.ok((extractionResponseSchema(invoiceSchema).required as string[]).includes('invoiceAssessment'));
  await assert.rejects(extract({...assessment,documentType:'multiple_invoices'}),/each invoice separately/);
  await assert.rejects(extract({...assessment,documentType:'other'}),/not supported/);
@@ -79,7 +79,7 @@ test('fixed invoice guidance keeps unprinted combined tax absent for existing pa
  const rawValues={...values,subtotal:'630.000',tax:null,total:'662.750',line_items:[{...values.line_items[0],quantity:'1',unit_price:'630.000',amount:'630.000'}]};
  const result=await createOpenAIProvider({apiKey:'owned-fixture',fetch:(async(_url,options)=>{
   request=JSON.parse(String(options?.body));
-  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true}})}]}]});
+  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:1,allPagesRead:true}})}]}]});
  }) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Subtotal 630.000\nSample Tax1 11.750\nSample Tax2 21.000\nTotal 662.750'}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
  assert.match(request.instructions,/copy only an explicitly printed aggregate tax total/);
  assert.match(request.instructions,/single tax charge is its own printed total/);
@@ -95,7 +95,7 @@ test('invoice selection retains full row descriptions and numeric spans without 
  const rawValues={...values,currency:null,subtotal:'630.00',tax:null,total:'662.750',line_items:[{...values.line_items[0],description,quantity:'1',unit_price:'630.00',amount:'630.00'}]};
  const result=await createOpenAIProvider({apiKey:'owned-fixture',fetch:(async(_url,options)=>{
   request=JSON.parse(String(options?.body));
-  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[{field:'line_items[0].description',page:1,text:description},{field:'total',page:1,text:'Total Rs.662.750'}],invoiceAssessment:{documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true}})}]}]});
+  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[{field:'line_items[0].description',page:1,text:description},{field:'total',page:1,text:'Total Rs.662.750'}],invoiceAssessment:{documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:1,allPagesRead:true}})}]}]});
  }) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:`${description}\nSubtotal630.00\nTax111.75\nTax221.00\nTotal Rs.662.750`}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
  assert.match(request.instructions,/complete printed description, including every wrapped subtitle or detail line/);
  assert.match(request.instructions,/Never shorten it to the item title or summarize it/);
@@ -106,4 +106,39 @@ test('invoice selection retains full row descriptions and numeric spans without 
  assert.equal((result.normalizedValues.line_items as any[])[0].description,description);
  assert.equal(result.evidence.total[0].source,'matched-text');
  assert.equal(result.evidence['line_items[0].description'][0].source,'matched-text');
+});
+
+test('invoice language assessment is required, bounded and rejects unsupported or uncertain sources before accepting data',async()=>{
+ const assessment={documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:1,allPagesRead:true};
+ const extract=(invoiceAssessment:unknown)=>createOpenAIProvider({apiKey:'owned-fixture',fetch:(async()=>Response.json({id:'owned-language-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues:values,evidence:[],invoiceAssessment})}]}]})) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Invoice 00042. Supplier. Quantity. Total EUR 10.00.'}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
+ const response=extractionResponseSchema(invoiceSchema) as any;
+ assert.deepEqual(response.properties.invoiceAssessment.properties.sourceLanguage.enum,['english','unsupported','uncertain']);
+ assert.ok(response.properties.invoiceAssessment.required.includes('sourceLanguage'));
+ for(const [sourceLanguage,message] of [['unsupported',/supports English supplier invoices only/],['uncertain',/could not confirm.*supported in English/]] as const){
+  await assert.rejects(extract({...assessment,sourceLanguage}),error=>error instanceof Error&&message.test(error.message)&&/No extraction was saved/.test(error.message)&&(error as any).permanent===true);
+ }
+ for(const sourceLanguage of [undefined,null,'de','English',1,['english'],{language:'english'}])await assert.rejects(extract({...assessment,sourceLanguage}),/invalid structured extraction/);
+ await assert.rejects(extract({...assessment,languageOverride:'english'}),/invalid structured extraction/);
+});
+
+test('English invoice assessment preserves foreign proper names and product codes without translating existing parser data',async()=>{
+ let request:any;
+ const rawValues={...values,supplier:'Müller & Söhne GmbH',line_items:[{...values.line_items[0],product_code:'東京-000123',description:'Café Étoile replacement filter\nSize 10 mm'}]};
+ const result=await createOpenAIProvider({apiKey:'owned-fixture',fetch:(async(_url,options)=>{
+  request=JSON.parse(String(options?.body));
+  return Response.json({id:'owned-language-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLanguage:'english',sourceLineItemCount:1,allPagesRead:true}})}]}]});
+ }) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Invoice. Supplier: Müller & Söhne GmbH. Product code: 東京-000123. Description: Café Étoile replacement filter\nSize 10 mm. Total EUR 10.00.'}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
+ assert.deepEqual(result.rawValues,rawValues);
+ assert.equal(result.normalizedValues.supplier,rawValues.supplier);
+ assert.equal((result.normalizedValues.line_items as any[])[0].product_code,'東京-000123');
+ assert.equal((result.normalizedValues.line_items as any[])[0].description,rawValues.line_items[0].description);
+ assert.equal(result.promptVersion,'paperwake-invoice-v3');
+ assert.match(request.instructions,/complete parallel English wording is acceptable/);
+ assert.match(request.instructions,/Foreign proper names, addresses, brands and product codes alone are not grounds for rejection/);
+ assert.match(request.instructions,/never translate source values or proper names/);
+ assert.match(request.instructions,/Do not infer language from the filename, country, currency or parser locale/);
+ assert.ok(request.instructions.indexOf('invoiceAssessment.sourceLanguage')<request.instructions.indexOf('workspace-controlled'));
+ const generic=extractionResponseSchema({fields:[{key:'supplier',label:'Supplier',type:'string'}]}) as any;
+ assert.equal(generic.properties.invoiceAssessment,undefined);
+ assert.deepEqual(generic.required,['rawValues','evidence']);
 });

@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
-import {MemoryRouter,Routes,Route} from 'react-router-dom';
+import {createMemoryRouter,RouterProvider,Routes,Route} from 'react-router-dom';
 import {invoiceSchema} from '../shared/invoice';
 import {registerHooks} from 'node:module';
 import {ApiError} from '../src/lib/api';
 import {SessionProvider,useSession} from '../src/lib/session';
+import {InvoiceDraftGuardProvider} from '../src/features/documents/InvoiceDraftGuard';
 const hooks=registerHooks({load(url,context,next){return url.endsWith('.css')?{format:'module',source:'',shortCircuit:true}:next(url,context);}});
 const AppShell=await import('../src/components/AppShell').then(module=>module.default);
 const Review=await import('../src/features/documents/Review').then(module=>module.default).finally(()=>hooks.deregister());
@@ -28,10 +29,11 @@ function render(error:Error,{cached=false,shell=false,review=false}:{cached?:boo
   client.setQueryData(['session-fixture','/api/export-mappings'],{mappings:[]});
  }
  client.getQueryCache().find({queryKey:key,exact:true})!.setState({status:'error',error,fetchStatus:'idle'});
+ const router=createMemoryRouter([{path:'*',element:createElement(SessionProvider,null,createElement(InvoiceDraftGuardProvider,null,review?createElement(Routes,null,createElement(Route,{path:'/app/documents/:id',element:createElement(Review)})):createElement(shell?AppShell:Probe)))}],{initialEntries:['/app/documents/owned-invoice']});
  try{
-  const html=renderToStaticMarkup(createElement(QueryClientProvider,{client},createElement(MemoryRouter,{initialEntries:['/app/documents/owned-invoice']},createElement(SessionProvider,null,review?createElement(Routes,null,createElement(Route,{path:'/app/documents/:id',element:createElement(Review)})):createElement(shell?AppShell:Probe)))));
+  const html=renderToStaticMarkup(createElement(QueryClientProvider,{client},createElement(RouterProvider,{router})));
   assert.equal(calls,0);return html;
- }finally{client.clear();globalThis.fetch=fetch;for(const [key,descriptor] of [['sessionStorage',oldStorage],['window',oldWindow]] as const){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}
+ }finally{router.dispose();client.clear();globalThis.fetch=fetch;for(const [key,descriptor] of [['sessionStorage',oldStorage],['window',oldWindow]] as const){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}
 }
 
 test('network and server failures remain unavailable instead of becoming a signed-out session',()=>{
