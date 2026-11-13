@@ -103,7 +103,7 @@ export async function registerExports(app:FastifyInstance, services:{render?:typ
     const row=await withWorkspace(actor.workspaceId,async c=>(await c.query('SELECT format,mime_type,bytes FROM export_snapshots WHERE id=$1 AND workspace_id=$2',[id,actor.workspaceId])).rows[0]);
     if(!row)notFound();
     checkHostedExportSize(row.bytes);
-    return reply.header('Cache-Control','private, no-store').header('Content-Disposition',`attachment; filename="paperwake-invoices-${id.slice(0,8)}.${row.format}"`).type(row.mime_type).send(row.bytes);
+    return reply.header('Cache-Control','private, no-store').header('Content-Disposition',`attachment; filename="maintainflow-invoices-${id.slice(0,8)}.${row.format}"`).type(row.mime_type).send(row.bytes);
   });
   app.get('/api/export-mappings',async request=> {
     const actor=await requireActor(request,{scope:'results:read'});
@@ -113,7 +113,7 @@ export async function registerExports(app:FastifyInstance, services:{render?:typ
     const actor=await requireActor(request,{roles:['owner','admin','editor'],scope:'parsers:write'});
     const input=exportMappingInput.parse(request.body);
     validateInvoiceColumns(input.columns,input.lineItems);
-    if(input.name!=='Paperwake invoice CSV')badRequest('Use the Paperwake invoice CSV mapping.');
+    if(input.name!=='Paperwake invoice CSV')badRequest('Use the MaintainFlow invoice CSV mapping.');
     return withWorkspace(actor.workspaceId,async c=> {
       await c.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[actor.workspaceId]);
       if(!(await c.query("SELECT id FROM parsers WHERE id=$1 AND workspace_id=$2 AND use_case='invoice' AND not archived",[input.parserId,actor.workspaceId])).rowCount)notFound();

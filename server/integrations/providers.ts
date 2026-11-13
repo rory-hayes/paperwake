@@ -415,7 +415,7 @@ export async function registerProviders(app:FastifyInstance,dependencies:{stripe
   if(mode==='live'&&!checkoutPolicy())badRequest('Checkout terms must be configured before paid subscriptions are available.',503);
   await verifyBillingAccount(client,settings,true);
   const price=await client.prices.retrieve(priceId);
-  if(!stripePriceMatches(price,planId,settings.prices,mode,true))badRequest('Configured Stripe price does not match the Paperwake monthly plan.',503);
+  if(!stripePriceMatches(price,planId,settings.prices,mode,true))badRequest('Configured Stripe price does not match the MaintainFlow monthly plan.',503);
   await verifyBillingPortal(client,settings);
   const reservation=await transaction(adminPool,async c=>{
    await c.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`billing:${actor.workspaceId}`]);
@@ -473,7 +473,7 @@ export async function registerProviders(app:FastifyInstance,dependencies:{stripe
   const portal=await verifyBillingPortal(client,settings);
   // Existing customers must still be able to cancel when signup pricing is
   // archived or changed. Price availability matters only when offering updates.
-  if(portal.features.subscription_update.enabled)for(const plan of ['standard'] as const){const id=settings.prices[plan];if(id&&!stripePriceMatches(await client.prices.retrieve(id),plan,settings.prices,mode,true))badRequest('Configured Stripe price does not match the Paperwake monthly plan.',503);}
+  if(portal.features.subscription_update.enabled)for(const plan of ['standard'] as const){const id=settings.prices[plan];if(id&&!stripePriceMatches(await client.prices.retrieve(id),plan,settings.prices,mode,true))badRequest('Configured Stripe price does not match the MaintainFlow monthly plan.',503);}
   const session=await client.billingPortal.sessions.create({customer:local.customer_id,return_url:`${config.origin}/app/settings?tab=billing`,configuration:settings.portalConfigurationId});
   assertStripeMode(session,mode);
   if(session.customer!==local.customer_id)throw new Error('Stripe portal does not match this workspace.');

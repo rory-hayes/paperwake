@@ -122,7 +122,7 @@ const attempt=await extractWithDeadline(async signal=>{
  const policy=job.config.templatePolicy;
  const bank=job.config.useCase==='bank_statement';
  const invoice=job.config.useCase==='invoice';
- if(!invoice||job.config.mode!=='ai'||!isDeepStrictEqual(data.schema,invoiceSchema))throw Object.assign(new Error('This job is not compatible with the Paperwake supplier-invoice workflow.'),{permanent:true});
+ if(!invoice||job.config.mode!=='ai'||!isDeepStrictEqual(data.schema,invoiceSchema))throw Object.assign(new Error('This job is not compatible with the MaintainFlow supplier-invoice workflow.'),{permanent:true});
  if(Object.hasOwn(job.config,'bankPdfLayoutVersion')&&(!bank||job.config.bankPdfLayoutVersion!==bankPdfLayoutVersion))throw Object.assign(new Error('This job uses an unsupported bank PDF input version. Reprocess with current saved settings.'),{permanent:true});
  if(job.config.bankWorkflow!=null&&job.config.bankWorkflow!==bankStatementWorkflow||bank&&job.config.bankWorkflow!==bankStatementWorkflow||job.config.bankWorkflow===bankStatementWorkflow&&!bank)throw Object.assign(new Error('This job uses an unsupported bank statement workflow. Reprocess with current saved settings.'),{permanent:true});
  const sourceBankFormats=bank&&isDeepStrictEqual(data.schema,bankStatementSchema);

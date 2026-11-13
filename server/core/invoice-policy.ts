@@ -6,7 +6,7 @@ import {invoiceSchema} from '../../shared/invoice.js';
 import {badRequest} from './db.js';
 
 export function assertFixedInvoiceSchema(schema:unknown){
- if(!isDeepStrictEqual(schema,invoiceSchema))badRequest('Only the current supplier-invoice workflow is available in Paperwake.',409);
+ if(!isDeepStrictEqual(schema,invoiceSchema))badRequest('Only the current supplier-invoice workflow is available in MaintainFlow.',409);
 }
 
 /** Product boundary, not a hidden feature flag. Future workflows require an explicit release. */
@@ -45,8 +45,8 @@ export function invoiceRouteAllowed(method:string,pathname:string){
 export function registerInvoiceLaunchPolicy(app:FastifyInstance){
  app.addHook('onRequest',async(request,reply)=>{
   const pathname=request.url.split('?')[0];
-  if(!invoiceRouteAllowed(request.method,pathname))return reply.code(404).send({error:'not_available',message:'This workflow is not available in Paperwake. Upload a supplier invoice PDF from Invoices.'});
-  if(pathname.startsWith('/api/')&&!pathname.startsWith('/api/internal/')&&request.headers.authorization?.startsWith('Bearer '))return reply.code(403).send({error:'api_unavailable',message:'Public API access is not available in this release. Sign in to Paperwake to manage invoices.'});
+  if(!invoiceRouteAllowed(request.method,pathname))return reply.code(404).send({error:'not_available',message:'This workflow is not available in MaintainFlow. Upload a supplier invoice PDF from Invoices.'});
+  if(pathname.startsWith('/api/')&&!pathname.startsWith('/api/internal/')&&request.headers.authorization?.startsWith('Bearer '))return reply.code(403).send({error:'api_unavailable',message:'Public API access is not available in this release. Sign in to MaintainFlow to manage invoices.'});
  });
 }
 

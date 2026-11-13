@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 const args=new Set(process.argv.slice(2));
 if(args.size===0||args.has('--help')){
  console.log('Usage: node scripts/probe-paperwake-hosted.mjs --probe --expected-revision=<commit> [--wake --ack-global-worker]');
- console.log('Target is fixed to https://paperwake-gamma.vercel.app. Supply PAPERWAKE_PROBE_WORKER_SECRET or read-only PAPERWAKE_PROBE_MONITOR_SECRET through the execution environment; never command arguments.');
+ console.log('Target is fixed to https://maintainflow.io. Supply PAPERWAKE_PROBE_WORKER_SECRET or read-only PAPERWAKE_PROBE_MONITOR_SECRET through the execution environment; never command arguments.');
  console.log('Without --wake this checks liveness, readiness, authenticated diagnostics and rejected unauthenticated access. --wake sends ONE authenticated global worker request; 202 does not prove completion. Read docs/PAPERWAKE-HOSTED-WORKER-VERIFICATION.md first.');
  process.exit(0);
 }
-const base='https://paperwake-gamma.vercel.app';
+const base='https://maintainflow.io';
 const revisionArg=[...args].find(value=>value.startsWith('--expected-revision='));
 assert.ok(args.has('--probe')&&revisionArg,'Explicit --probe and --expected-revision are required.');
 for(const value of args)assert.ok(['--probe','--wake','--ack-global-worker'].includes(value)||value===revisionArg,'Unknown probe option.');
@@ -28,7 +28,7 @@ async function request(method,path,secret){
  return {status:response.status,value};
 }
 try{
- const health=await request('GET','/api/health');assert.equal(health.status,200,'Liveness probe failed.');assert.equal(health.value.name,'Paperwake','Unexpected application.');assert.ok(typeof health.value.revision==='string'&&health.value.revision.startsWith(expectedRevision),'Deployed revision does not match.');
+ const health=await request('GET','/api/health');assert.equal(health.status,200,'Liveness probe failed.');assert.equal(health.value.name,'MaintainFlow','Unexpected application.');assert.ok(typeof health.value.revision==='string'&&health.value.revision.startsWith(expectedRevision),'Deployed revision does not match.');
  report.checks.push({check:'liveness',status:health.status,revision:health.value.revision,environment:health.value.environment});
  const ready=await request('GET','/api/ready');assert.equal(ready.status,200,'Dependency readiness failed.');assert.equal(ready.value.status,'ready','Dependency readiness failed.');
  for(const key of ['database','storage','restore'])assert.equal(ready.value.checks?.[key],'ok',`Dependency ${key} is unavailable.`);

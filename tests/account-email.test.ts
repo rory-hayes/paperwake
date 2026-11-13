@@ -108,23 +108,23 @@ test('durable MaintainFlow password change notifications retain their branding',
  assert.deepEqual(body,{from:'MaintainFlow <recovery@example.test>',to:[payload.to],subject:payload.subject,text:payload.text});
 });
 
-test('new Paperwake messages use the Paperwake sender while durable legacy retries keep their brand',async()=>{
+test('account messages preserve the brand of their durable subject when selecting the sender',async()=>{
  const payloads:{from:string;subject:string}[]=[];
  const sender=createAccountEmailSender(environment,{fetchImpl:(async(_url,options)=>{payloads.push(JSON.parse(String(options?.body)));return success();}) as typeof fetch})!;
  for(const brand of ['Paperwake','MaintainFlow','Folio'])await sender.send({...message(),subject:`Reset your ${brand} password`});
  assert.deepEqual(payloads.map(p=>p.from),['Paperwake <recovery@example.test>','MaintainFlow <recovery@example.test>','Folio <recovery@example.test>']);
 });
 
-test('new HTML and text are sent together with frozen reply-to and identical retry bytes',async()=>{
+for(const brand of ['MaintainFlow','Paperwake'] as const)test(`${brand} HTML and text retain frozen branding, reply-to and identical retry bytes`,async()=>{
  const requests:{body:string;key:string|null}[]=[];
- const payload:AccountEmailMessage={...message(),subject:'Verify your Paperwake email',text:'Use the original verification link.',html:'<!doctype html><html><body><p>Use the original verification link.</p></body></html>',replyTo:'support@example.test',templateVersion:'paperwake-account-v1'};
+ const payload:AccountEmailMessage={...message(),subject:`Verify your ${brand} email`,text:`Use the original ${brand} verification link.`,html:`<!doctype html><html><body><p>Use the original ${brand} verification link.</p></body></html>`,replyTo:'support@example.test',templateVersion:'paperwake-account-v1'};
  const sender=createAccountEmailSender(environment,{fetchImpl:(async(_url,options)=>{
   requests.push({body:String(options?.body),key:new Headers(options?.headers).get('idempotency-key')});
   if(requests.length===1)throw new Error('Uncertain HTML acknowledgement');return success();
  }) as typeof fetch})!;
  await assert.rejects(sender.send(payload),fails('temporary_failure',true));await sender.send(payload);
  assert.deepEqual(requests[0],requests[1]);
- assert.deepEqual(JSON.parse(requests[0].body),{from:'Paperwake <recovery@example.test>',to:[payload.to],subject:payload.subject,text:payload.text,html:payload.html,reply_to:payload.replyTo});
+ assert.deepEqual(JSON.parse(requests[0].body),{from:`${brand} <recovery@example.test>`,to:[payload.to],subject:payload.subject,text:payload.text,html:payload.html,reply_to:payload.replyTo});
  assert.equal(requests[0].key,payload.idempotencyKey);assert.ok(!requests[0].body.includes('templateVersion'));
 });
 

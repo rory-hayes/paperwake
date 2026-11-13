@@ -76,7 +76,7 @@ try{
  const identity=(await adminPool.query('select current_database() as database')).rows[0];assert.equal(identity.database,'paperwake_local','Refuse to read any unrelated or hosted database');
  let health:Awaited<ReturnType<typeof api>>|undefined;
  for(let attempt=0;attempt<20;attempt++){try{health=await api('GET','/api/health',undefined,1000);if(health.status===200)break;}catch{/* Local dev reloads may briefly close the listener before startup. */}await new Promise(resolve=>setTimeout(resolve,1000));}
- assert.equal(health?.status,200,'The local Paperwake API did not become ready within the bounded startup window');assert.equal(health.value.name,'Paperwake');
+ assert.equal(health?.status,200,'The local Paperwake API did not become ready within the bounded startup window');assert.equal(health.value.name,'MaintainFlow');
  const password=randomBytes(24).toString('base64url'),email=`paperwake-live-${id}@example.test`;
  const signup=await api('POST','/api/auth/register',{name:'Owned live invoice acceptance',email,password,workspaceName:`Synthetic invoice acceptance ${id.slice(0,8)}`,inviteCode:process.env.FOLIO_PREVIEW_INVITE_CODE});assert.equal(signup.status,201,'Live fixture signup must succeed without changing server auth settings');
  cookie=signup.cookies.join('; ');workspaceId=signup.value.workspace.id;userId=signup.value.user.id;report.workspaceId=workspaceId;report.userId=userId;

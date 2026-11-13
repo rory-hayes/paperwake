@@ -63,7 +63,7 @@ export function stripeConfiguration(environment:Record<string,string|undefined>=
   const url=new URL(origin);
   if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash||['localhost','127.0.0.1','::1','[::1]'].includes(url.hostname))throw new Error('Live Stripe billing requires the production HTTPS application origin.');
   if(!/^acct_[A-Za-z0-9]+$/.test(environment.STRIPE_ACCOUNT_ID||''))throw new Error('Live Stripe billing requires the approved STRIPE_ACCOUNT_ID.');
-  if(!prices.standard)throw new Error('Live Stripe billing requires the approved Paperwake plan price.');
+  if(!prices.standard)throw new Error('Live Stripe billing requires the approved MaintainFlow plan price.');
  }
  return {mode,key,prices,accountId:environment.STRIPE_ACCOUNT_ID,portalConfigurationId,...(testClockId?{testClockId}:{}),webhookSecret:environment.STRIPE_WEBHOOK_SECRET};
 }
@@ -99,7 +99,7 @@ export function assertStripePortalConfiguration(configuration:Stripe.BillingPort
  const update=configuration.features.subscription_update;
  if(update.enabled){
   const approved=new Set(Object.values(prices));
-  if(update.default_allowed_updates.some(value=>value!=='price')||!update.products?.length||update.products.some(product=>!product.prices.length||product.prices.some(id=>!approved.has(id))))throw new Error('The Stripe portal may only offer the approved Paperwake plan prices without quantity changes.');
+  if(update.default_allowed_updates.some(value=>value!=='price')||!update.products?.length||update.products.some(product=>!product.prices.length||product.prices.some(id=>!approved.has(id))))throw new Error('The Stripe portal may only offer the approved MaintainFlow plan prices without quantity changes.');
  }
 }
 export const resendEventSchema=z.object({type:z.literal('email.received'),data:z.object({

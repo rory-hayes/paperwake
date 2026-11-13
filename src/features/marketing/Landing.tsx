@@ -70,7 +70,7 @@ function IntegrationsSection() {
       <div className="marketing-integration-layout">
         <div className="marketing-integration-copy">
           <h2 id="integrations-title">Clean data.<br />Ready for what's next.</h2>
-          <p>Keep your existing spreadsheet. Paperwake handles the copying, with the original beside your results for review.</p>
+          <p>Keep your existing spreadsheet. MaintainFlow handles the copying, with the original beside your results for review.</p>
           <Link className="button secondary marketing-cta" to="/help">See the invoice workflow</Link>
           <p className="marketing-handwritten">Keep your workflow moving.</p>
         </div>
@@ -110,7 +110,7 @@ export default function Landing() {
         <IntegrationsSection />
         <Pricing />
         <FAQSection />
-        <section className="marketing-final-cta marketing-container" aria-label="Try Paperwake"><h2>Give your invoice copying a wake-up call.</h2><Link className="button primary marketing-cta" to="/sign-up?sample=invoice">Try a sample</Link></section>
+        <section className="marketing-final-cta marketing-container" aria-label="Try MaintainFlow"><h2>Keep your invoice workflow moving.</h2><Link className="button primary marketing-cta" to="/sign-up?sample=invoice">Try a sample</Link></section>
       </main>
       <MarketingFooter />
     </div>

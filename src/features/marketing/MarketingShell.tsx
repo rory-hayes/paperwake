@@ -25,7 +25,7 @@ export function MarketingHeader({startTo='/sign-up',startLabel='Try ten pages',s
   return (
     <header className="marketing-header marketing-header-with-bank">
       <div className="marketing-container marketing-header-inner">
-        <Link className="folio-brand" to="/" aria-label="Paperwake home">Paperwake</Link>
+        <Link className="folio-brand" to="/" aria-label="MaintainFlow home">MaintainFlow</Link>
         <nav className="marketing-desktop-nav" aria-label="Main navigation">
           {navigation.map((item) => <a key={item.label} href={item.href}>{item.label}</a>)}
           <Link to="/help">Resources</Link>
@@ -73,7 +73,7 @@ export function MarketingFooter() {
     <footer className="marketing-footer marketing-container">
       <div className="marketing-footer-grid">
         <div className="marketing-footer-brand">
-          <Link className="folio-brand" to="/" aria-label="Paperwake home">Paperwake</Link>
+          <Link className="folio-brand" to="/" aria-label="MaintainFlow home">MaintainFlow</Link>
           <p>Supplier invoices into useful spreadsheet rows.</p>
         </div>
         <nav aria-label="Product links">
@@ -94,7 +94,7 @@ export function MarketingFooter() {
           <Link to="/terms">Terms</Link>
         </nav>
       </div>
-      <div className="marketing-footer-bottom">© 2026 Paperwake</div>
+      <div className="marketing-footer-bottom">© 2026 MaintainFlow</div>
     </footer>
   );
 }

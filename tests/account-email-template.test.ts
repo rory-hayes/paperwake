@@ -13,7 +13,7 @@ test('verification and recovery preserve exact bearer links in both alternatives
     assert.match(result.text,new RegExp(`#token=${token}`));
     const visible=result.html.replace(/<[^>]*>/g,'');assert.ok(!visible.includes(token));
     assert.match(visible,kind==='email_verification'?/24 hours after your request/:/30 minutes after your request/);
-    if(kind==='email_verification')assert.match(result.text,/current Paperwake password/);
+    if(kind==='email_verification')assert.match(result.text,/current MaintainFlow password/);
     assert.match(result.text,/never ask you to send your password by email/);
     assert.equal(result.replyTo,'support@example.test');
   }
@@ -56,6 +56,8 @@ test('all account alternatives are deterministic, bounded and self-contained wit
   for(const kind of ['email_verification','password_reset','password_changed'] as const){
     const fixture=input(kind),first=renderPaperwakeAccountEmail(fixture);
     assert.deepEqual(renderPaperwakeAccountEmail(fixture),first);
+    assert.match(first.subject,/MaintainFlow/);assert.match(first.text,/MaintainFlow/);assert.match(first.html,/>MaintainFlow<span/);
+    assert.doesNotMatch(first.subject+first.text+first.html,/\bPaperwake\b/);
     assert.ok(Buffer.byteLength(first.html)<=6144);assert.ok(Buffer.byteLength(first.text)<=4096);
     assert.doesNotMatch(first.html,/<(?:script|iframe|img|form|input|link|svg)\b|@import|url\s*\(|\son\w+=/i);
     assert.match(first.html,/<html lang="en">/);assert.match(first.html,/<h1\b/);assert.match(first.html,/role="presentation"/);

@@ -38,21 +38,21 @@ test('the free evaluation is one-time and shows reserved pages with one shared-p
   const paid=PLANS.find(plan=>plan.id==='standard')!;
   assert.match(html,new RegExp(`€${paid.monthlyPrice}`));assert.match(html,new RegExp(`${paid.monthlyPages} processed pages per billing period`));
   assert.doesNotMatch(html,/Team|Standard plan|Parsers|suggestion/);
-  assert.doesNotMatch(button(html,'Subscribe to Paperwake'),/disabled/);
+  assert.doesNotMatch(button(html,'Subscribe to MaintainFlow'),/disabled/);
 });
 
 test('subscribed usage uses the billing period, preserves reservations and exposes cancellation',()=>{
   const html=renderBilling({subscribed:true});
   assert.match(html,/124 <small>\/ 500 pages this billing period/);assert.match(html,/371 pages available · 5 processing · Period ends/);
   assert.match(html,/aria-valuemax="500" aria-valuenow="129"/);assert.match(html,/Your current plan/);
-  assert.doesNotMatch(html,/No monthly reset|Subscribe to Paperwake/);assert.doesNotMatch(button(html,'Manage billing & cancellation'),/disabled/);
+  assert.doesNotMatch(html,/No monthly reset|Subscribe to MaintainFlow/);assert.doesNotMatch(button(html,'Manage billing & cancellation'),/disabled/);
   const awaiting=renderBilling({subscribed:true,usageAvailable:false});assert.match(awaiting,/allowance is awaiting a billing update/);assert.match(awaiting,/0 pages available/);
 });
 
 test('demo controls are labelled simulated while test Checkout never claims a real payment',()=>{
   const demo=renderBilling({mode:'mock',configured:false});
   assert.match(demo,/Demo billing · no payments/);assert.match(demo,/simulate a subscription/);assert.doesNotMatch(button(demo,'Try demo plan'),/disabled/);
-  assert.match(button(demo,'Cancel demo subscription'),/disabled/);assert.doesNotMatch(demo,/Test checkout|Subscribe to Paperwake/);
+  assert.match(button(demo,'Cancel demo subscription'),/disabled/);assert.doesNotMatch(demo,/Test checkout|Subscribe to MaintainFlow/);
   const subscribed=renderBilling({mode:'mock',subscribed:true});assert.doesNotMatch(button(subscribed,'Cancel demo subscription'),/disabled/);
   const testMode=renderBilling({mode:'test',checkout:'returned'});assert.match(testMode,/Test billing · no real payments/);assert.match(testMode,/No real subscription payment is taken/);
   assert.doesNotMatch(button(testMode,'Test checkout'),/disabled/);assert.doesNotMatch(button(testMode,'Open test billing portal'),/disabled/);
@@ -61,11 +61,11 @@ test('demo controls are labelled simulated while test Checkout never claims a re
 
 test('unconfigured checkout and viewers cannot start billing mutations; cancellation return preserves allowance',()=>{
   for(const mode of ['test','live'] as const){
-    const html=renderBilling({mode,configured:false});assert.match(button(html,mode==='live'?'Subscribe to Paperwake':'Test checkout'),/disabled/);
+    const html=renderBilling({mode,configured:false});assert.match(button(html,mode==='live'?'Subscribe to MaintainFlow':'Test checkout'),/disabled/);
     assert.match(button(html,mode==='live'?'Manage billing & cancellation':'Open test billing portal'),/disabled/);assert.match(html,/not available yet|temporarily unavailable/);
   }
   for(const mode of ['mock','test','live'] as const){
-    const html=renderBilling({mode,role:'viewer'});assert.match(button(html,mode==='mock'?'Try demo plan':mode==='test'?'Test checkout':'Subscribe to Paperwake'),/disabled/);
+    const html=renderBilling({mode,role:'viewer'});assert.match(button(html,mode==='mock'?'Try demo plan':mode==='test'?'Test checkout':'Subscribe to MaintainFlow'),/disabled/);
     assert.match(button(html,mode==='mock'?'Cancel demo subscription':mode==='test'?'Open test billing portal':'Manage billing & cancellation'),/disabled/);
   }
   assert.match(renderBilling({checkout:'canceled'}),/Checkout was canceled. Your current allowance is unchanged/);
@@ -73,5 +73,5 @@ test('unconfigured checkout and viewers cannot start billing mutations; cancella
 
 test('missing or stale billing facts never expose an actionable subscription form',()=>{
   assert.match(renderBilling({usagePending:true}),/Loading your workspace/);
-  for(const failure of ['providers','usage'] as const){const html=renderBilling({failure});assert.match(html,/Billing status unavailable/);assert.doesNotMatch(html,/Subscribe to Paperwake|Try demo plan|Manage billing/);}
+  for(const failure of ['providers','usage'] as const){const html=renderBilling({failure});assert.match(html,/Billing status unavailable/);assert.doesNotMatch(html,/Subscribe to MaintainFlow|Try demo plan|Manage billing/);}
 });

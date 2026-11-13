@@ -94,7 +94,7 @@ export async function finalizeDirectUpload(actor:Actor,id:string):Promise<any>{
     const {rows:[row]}=await c.query('select * from direct_uploads where id=$1 and workspace_id=$2 for update',[id,actor.workspaceId]);
     if(!row||row.created_by!==actor.userId)notFound('Upload reservation not found');
     validateStorageKey(row.storage_key,actor.workspaceId);
-    if(row.pdf_split_request_id||row.archive_request_id||row.bank_locale)badRequest('This upload workflow is not available in Paperwake.',409);
+    if(row.pdf_split_request_id||row.archive_request_id||row.bank_locale)badRequest('This upload workflow is not available in MaintainFlow.',409);
     if(row.state==='complete'||row.state==='cleaned'){
       if(row.pdf_split_id)return {prior:await readPdfSplitReceipt(c,actor.workspaceId,row.pdf_split_id,true)};
       if(row.archive_import_id)return {prior:await readArchiveImportReceipt(c,actor.workspaceId,row.archive_import_id,true)};

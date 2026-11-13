@@ -65,11 +65,45 @@ test('invoice CSV preserves exact identifiers and signed decimals while escaping
 test('invoice provider rejects reported omissions, multi-invoice sources and inconsistent row counts',async()=>{
  const assessment={documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true};
  const extract=async(invoiceAssessment:unknown)=>createOpenAIProvider({apiKey:'owned-fixture',fetch:(async()=>Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues:values,evidence:[],invoiceAssessment})}]}]})) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Owned synthetic supplier invoice'}],schema:invoiceSchema,instructions:'Extract invoice',locale:'en-IE'});
- const result=await extract(assessment);assert.equal(result.promptVersion,'paperwake-invoice-v1');assert.equal(result.normalizedValues.total,'9007199254740993.10');
+ const result=await extract(assessment);assert.equal(result.promptVersion,'paperwake-invoice-v2');assert.equal(result.normalizedValues.total,'9007199254740993.10');
  assert.ok((extractionResponseSchema(invoiceSchema).required as string[]).includes('invoiceAssessment'));
  await assert.rejects(extract({...assessment,documentType:'multiple_invoices'}),/each invoice separately/);
  await assert.rejects(extract({...assessment,documentType:'other'}),/not supported/);
  await assert.rejects(extract({...assessment,allPagesRead:false}),/No partial extraction/);
  await assert.rejects(extract({...assessment,sourceLineItemCount:2}),/count does not match/);
  await assert.rejects(extract({...assessment,sourceLineItemCount:101}),/more than 100/);
+});
+
+test('fixed invoice guidance keeps unprinted combined tax absent for existing parser instructions and preserves review warnings',async()=>{
+ let request:any;
+ const rawValues={...values,subtotal:'630.000',tax:null,total:'662.750',line_items:[{...values.line_items[0],quantity:'1',unit_price:'630.000',amount:'630.000'}]};
+ const result=await createOpenAIProvider({apiKey:'owned-fixture',fetch:(async(_url,options)=>{
+  request=JSON.parse(String(options?.body));
+  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[],invoiceAssessment:{documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true}})}]}]});
+ }) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:'Subtotal 630.000\nSample Tax1 11.750\nSample Tax2 21.000\nTotal 662.750'}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
+ assert.match(request.instructions,/copy only an explicitly printed aggregate tax total/);
+ assert.match(request.instructions,/single tax charge is its own printed total/);
+ assert.match(request.instructions,/multiple tax components.*return null for tax; never select just one component or calculate their sum/);
+ assert.equal(result.rawValues.tax,null);assert.equal(result.normalizedValues.tax,null);
+ assert.equal(result.normalizedValues.total,'662.750');
+ assert.ok(result.issues.some(issue=>issue.field==='total'&&issue.code==='reconciliation_incomplete'));
+});
+
+test('invoice selection retains full row descriptions and numeric spans without inferring a currency code',async()=>{
+ let request:any;
+ const description='Brochure Design\nBrochure Design Single Sided Color';
+ const rawValues={...values,currency:null,subtotal:'630.00',tax:null,total:'662.750',line_items:[{...values.line_items[0],description,quantity:'1',unit_price:'630.00',amount:'630.00'}]};
+ const result=await createOpenAIProvider({apiKey:'owned-fixture',fetch:(async(_url,options)=>{
+  request=JSON.parse(String(options?.body));
+  return Response.json({id:'owned-response',status:'completed',model:openAIExtraction.model,usage:{input_tokens:100,output_tokens:100},output:[{type:'message',status:'completed',content:[{type:'output_text',text:JSON.stringify({rawValues,evidence:[{field:'line_items[0].description',page:1,text:description},{field:'total',page:1,text:'Total Rs.662.750'}],invoiceAssessment:{documentType:'supplier_invoice',sourceLineItemCount:1,allPagesRead:true}})}]}]});
+ }) as typeof fetch}).extract({bytes:Buffer.from('%PDF-owned-controlled-input'),mimeType:'application/pdf',pages:[{page:1,text:`${description}\nSubtotal630.00\nTax111.75\nTax221.00\nTotal Rs.662.750`}],schema:invoiceSchema,instructions:'Extract one supplier invoice only.',locale:'en-IE'});
+ assert.match(request.instructions,/complete printed description, including every wrapped subtitle or detail line/);
+ assert.match(request.instructions,/Never shorten it to the item title or summarize it/);
+ assert.match(request.instructions,/literal numeric span without surrounding currency symbols or prefixes such as Rs\./);
+ assert.match(request.instructions,/Preserve the number punctuation, decimal places, trailing zeroes, minus signs and accounting parentheses exactly/);
+ assert.match(request.instructions,/keep it null unless an explicit three-letter currency code is printed/);
+ assert.equal(result.normalizedValues.currency,null);assert.equal(result.normalizedValues.total,'662.750');
+ assert.equal((result.normalizedValues.line_items as any[])[0].description,description);
+ assert.equal(result.evidence.total[0].source,'matched-text');
+ assert.equal(result.evidence['line_items[0].description'][0].source,'matched-text');
 });

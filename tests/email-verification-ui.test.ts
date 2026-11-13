@@ -76,7 +76,7 @@ test('missing, malformed, duplicate and unremovable verification links require r
 
 test('confirmation proof accepts existing short or spaced credentials and preserves sign-in creation-policy separation',()=>{
   for(const password of ['x','  ','short','a'.repeat(128)])assert.equal(verificationPasswordError(password),'');
-  assert.match(verificationPasswordError(''),/Enter your Paperwake password/);assert.match(verificationPasswordError('a'.repeat(129)),/Enter your Paperwake password/);
+  assert.match(verificationPasswordError(''),/Enter your MaintainFlow password/);assert.match(verificationPasswordError('a'.repeat(129)),/Enter your MaintainFlow password/);
   const signIn=render({surface:'signin',available:false});assert.doesNotMatch(signIn.match(/<input[^>]*type="password"[^>]*>/)?.[0]||'',/minLength/);assert.doesNotMatch(submit(signIn,'Sign in'),/disabled/);assert.match(signIn,/Need a verification email/);
   assert.match(render({surface:'signup'}),/minLength="10"/);
 });
@@ -95,7 +95,7 @@ test('personal verification controls remain outside the password form and are av
 
 test('private paid pilots request an invite without claiming preview or simulated billing',()=>{
  const html=render({surface:'signup',preview:false,inviteRequired:true});
- assert.match(html,/Pilot invite code/);assert.match(html,/Use the private code provided with your Paperwake invitation/);assert.doesNotMatch(html,/Preview invite code|Private test preview|simulated billing/);
+ assert.match(html,/Pilot invite code/);assert.match(html,/Use the private code provided with your MaintainFlow invitation/);assert.doesNotMatch(html,/Preview invite code|Private test preview|simulated billing/);
  assert.match(render({surface:'signup',preview:true,inviteRequired:true}),/Preview invite code/);
  assert.doesNotMatch(render({surface:'signup',preview:false,inviteRequired:false}),/Pilot invite code|Preview invite code/);
 });

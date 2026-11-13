@@ -1,6 +1,6 @@
 /** Only proven input-validation failures belong here; operational failures retry. */
 export const sourceValidationReasons = Object.freeze({
-  invoice_pdf_only: {message:'Paperwake currently supports supplier invoice PDF files only. Other document types and formats are not supported.',statusCode:415},
+  invoice_pdf_only: {message:'MaintainFlow currently supports supplier invoice PDF files only. Other document types and formats are not supported.',statusCode:415},
   invoice_page_limit: {message:'Supplier invoices must be five pages or fewer. No pages were processed or charged.',statusCode:413},
   invoice_native_text: {message:'Every invoice page must contain readable digital text. Scanned, image-only or blank-page PDFs are not supported yet.',statusCode:415},
   empty: { message: 'The file is empty', statusCode: 400 },

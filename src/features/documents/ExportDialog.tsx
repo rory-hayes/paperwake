@@ -27,7 +27,7 @@ export default function ExportDialog({ids,open,onOpenChange,parserId,revisions,r
       if(result.downloadUrl!==`/api/exports/${result.id}/download`)throw new Error('The CSV download could not be opened. Please try again.');
       const response=await fetch(result.downloadUrl,{signal:request.signal,headers:selectedWorkspace?{'X-Workspace-Id':selectedWorkspace}:undefined,credentials:'same-origin',cache:'no-store'});
       if(!response.ok)throw new Error('The CSV could not be downloaded.');const blob=await response.blob();if(!current())return;
-      const href=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=href;anchor.download='paperwake-invoices.csv';anchor.click();setTimeout(()=>URL.revokeObjectURL(href),5000);setMessage('Your approved CSV is ready. The browser download has started.');
+      const href=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=href;anchor.download='maintainflow-invoices.csv';anchor.click();setTimeout(()=>URL.revokeObjectURL(href),5000);setMessage('Your approved CSV is ready. The browser download has started.');
     }catch(cause){if(current())setError(cause instanceof Error?cause.message:'The export could not be completed.');}
     finally{if(current()){controller.current=null;setExporting(false);}}
   }

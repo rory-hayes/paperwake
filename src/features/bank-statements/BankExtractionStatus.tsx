@@ -40,11 +40,11 @@ const temporaryFailures=new Set([
   'Worker lease expired; automatic retry limit reached. Reprocess the document to try again.',
 ]);
 function failureGuidance(error:string|null|undefined,canEdit:boolean){
-  if(error==='The OpenAI project has no available API quota. Check project billing and limits.')return 'Statement processing is unavailable right now. Contact Paperwake support before starting another extraction.';
-  if(error&&setupFailures.has(error))return 'Statement processing needs attention. Contact Paperwake support before starting another extraction.';
+  if(error==='The OpenAI project has no available API quota. Check project billing and limits.')return 'Statement processing is unavailable right now. Contact MaintainFlow support before starting another extraction.';
+  if(error&&setupFailures.has(error))return 'Statement processing needs attention. Contact MaintainFlow support before starting another extraction.';
   if(error&&sourceFailures.has(error))return 'The original statement or processing limits need attention. Check the original file and supported limits, and contact support before starting another extraction.';
   if(error&&temporaryFailures.has(error))return canEdit?'A temporary service or processing interruption stopped this extraction. Wait a little before using Extract again; a new extraction uses pages from your allowance.':'A temporary service or processing interruption stopped this extraction. Ask a workspace editor to try again later if needed.';
-  return 'Contact Paperwake support to check this failure before starting another extraction.';
+  return 'Contact MaintainFlow support to check this failure before starting another extraction.';
 }
 
 /** Job exceptions are not public copy: describe lifecycle using fixed messages only. */

@@ -1,6 +1,6 @@
-# Paperwake
+# MaintainFlow
 
-Paperwake turns English supplier-invoice PDFs into reviewed CSV files. It is a separate application copied from the user-owned Folio codebase, with the original visual design retained and a much smaller launch scope.
+MaintainFlow turns English supplier-invoice PDFs into reviewed CSV files. It is a separate application copied from the user-owned Folio codebase, with the original visual design retained and a much smaller launch scope. The owner renamed the product from Paperwake on 13 November 2026; existing repository paths, database identifiers, environment keys and historical evidence retain their original names for compatibility.
 
 The initial customer is the finance or operations team at a small wholesaler or importer, repeatedly copying supplier-invoice fields and line items into Excel or Google Sheets. The first product is one complete workflow: **upload → extract → review and correct → approve → download CSV**.
 

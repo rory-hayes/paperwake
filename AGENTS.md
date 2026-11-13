@@ -1,10 +1,10 @@
-# Paperwake implementation
+# MaintainFlow implementation (formerly Paperwake)
 
-This is the separate user-owned Paperwake repository, seeded from Folio commit c97df310b5813e7dd483259b848ff472e9592815. The original Folio directory must remain unchanged. The sibling `paperwake` checkout is unlicensed Supastarter source and must not be reused.
+This is the separate user-owned application repository, renamed from Paperwake to MaintainFlow by the owner on 13 November 2026, seeded from Folio commit c97df310b5813e7dd483259b848ff472e9592815. The directory, database identifiers and provider project names retain Paperwake for compatibility. The original Folio directory must remain unchanged. The sibling `paperwake` checkout is unlicensed Supastarter source and must not be reused.
 
 ## Current scope
 
-- Preserve Folio's visual styling and useful review controls; brand the product Paperwake.
+- Preserve Folio's visual styling and useful review controls; brand the product MaintainFlow.
 - Invoice-only MVP: English digital supplier-invoice PDF upload, actual extraction, editable header/line-item review, saved corrections, explicit approval and CSV download.
 - Navigation: Invoices and Settings. No generic document chooser, parser builder, bank statements, incoming email, image formats, splits, integrations, public API or automatic approval at launch. Preserve future implementation helpers where useful, but enforce launch boundaries on the server as well as the UI.
 - Proposed commercial offer: EUR 49/month excluding applicable VAT, 500 processed pages, ten one-time evaluation pages, no automatic overage. Confirm full-allowance economics before claiming readiness. All displayed and server-side prices/limits must agree.

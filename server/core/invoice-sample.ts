@@ -5,7 +5,7 @@ let sample:Promise<Buffer>|undefined;
 export function syntheticInvoicePdf(){
  return sample??=(async()=>{
   const pdf=await PDFDocument.create();pdf.setCreationDate(new Date('2026-01-01T00:00:00Z'));pdf.setModificationDate(new Date('2026-01-01T00:00:00Z'));
-  pdf.setTitle('Paperwake synthetic supplier invoice');pdf.setAuthor('Paperwake');
+  pdf.setTitle('MaintainFlow synthetic supplier invoice');pdf.setAuthor('MaintainFlow');
   const page=pdf.addPage([595,842]),font=await pdf.embedFont(StandardFonts.Helvetica);
   const lines=[
    'SYNTHETIC EXAMPLE - NOT A REAL INVOICE',

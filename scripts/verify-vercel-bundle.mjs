@@ -3,7 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {makeTiff} from '../tests/fixtures/tiff.ts';
+import {verifyCanonicalWebRedirect} from './verify-canonical-web-redirect.mjs';
 
+await verifyCanonicalWebRedirect();
 const directory=await fs.mkdtemp(path.join(os.tmpdir(),'paperwake-bundle-check-'));
 try{
   const routing=JSON.parse(await fs.readFile('.vercel/output/config.json','utf8'));
@@ -165,7 +167,7 @@ try{
     }
     const app=await buildApp({rateLimitStore:BundleStore});
     const health=await app.inject('/api/health');
-    assert.equal(health.statusCode,200);assert.equal(health.json().name,'Paperwake');assert.equal(health.headers['x-ratelimit-limit'],'300');
+    assert.equal(health.statusCode,200);assert.equal(health.json().name,'MaintainFlow');assert.equal(health.headers['x-ratelimit-limit'],'300');
     const preview=await app.inject('/api/config');assert.equal(preview.json().preview,true);assert.equal(preview.json().passwordRecovery.available,false);assert.deepEqual(preview.json().emailVerification,{available:false,requiredForSignup:true});
     const missing=await app.inject('/api/packaged-missing-route');
     assert.equal(missing.statusCode,404);assert.equal(missing.json().error,'not_available');

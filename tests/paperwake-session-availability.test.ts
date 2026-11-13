@@ -18,7 +18,7 @@ function render(error:Error,{cached=false,shell=false,review=false}:{cached?:boo
  Object.defineProperty(globalThis,'window',{configurable:true,value:{matchMedia:()=>({matches:false})}});
  globalThis.fetch=(async()=>{calls++;throw new Error('Unexpected session mutation');}) as typeof fetch;
  const client=new QueryClient({defaultOptions:{queries:{retry:false,retryOnMount:false,staleTime:Infinity,gcTime:Infinity}}}),key=['session','session-fixture'];
- if(cached)client.setQueryData(key,{user:{id:'owned-user',name:'Owned user',email:'owned@example.test',emailVerifiedAt:'2026-11-01T00:00:00Z',emailVerificationRequired:false},workspace:{id:'session-fixture',name:'Owned workspace',role:'owner',plan:{name:'Paperwake'}},workspaces:[]});
+ if(cached)client.setQueryData(key,{user:{id:'owned-user',name:'Owned user',email:'owned@example.test',emailVerifiedAt:'2026-11-01T00:00:00Z',emailVerificationRequired:false},workspace:{id:'session-fixture',name:'Owned workspace',role:'owner',plan:{id:'standard',name:'Paperwake'}},workspaces:[]});
  else client.getQueryCache().build(client,{queryKey:key});
  if(review){
   const values={invoice_number:'SYN-00001',supplier:'Owned supplier',invoice_date:'2026-11-09',currency:'EUR',subtotal:'10.00',tax:'0.00',total:'10.00',line_items:[{description:'Owned line',amount:'10.00'}]};
@@ -38,7 +38,7 @@ test('network and server failures remain unavailable instead of becoming a signe
  for(const error of [new TypeError('Failed to fetch'),new ApiError('Private upstream failure',503)]){
   assert.match(render(error),/&quot;unavailable&quot;:true/);
   const cached=render(error,{cached:true});assert.match(cached,/owned-user/);assert.match(cached,/&quot;unavailable&quot;:true/);
-  const cachedPage=render(error,{shell:true,cached:true});assert.match(cachedPage,/Retry connection/);assert.match(cachedPage,/Owned workspace/);
+  const cachedPage=render(error,{shell:true,cached:true});assert.match(cachedPage,/Retry connection/);assert.match(cachedPage,/Owned workspace/);assert.match(cachedPage,/<span>MaintainFlow<\/span>/);assert.doesNotMatch(cachedPage,/Paperwake/);
   const page=render(error,{shell:true});assert.match(page,/temporarily unavailable/);assert.match(page,/Your sign-in has not been changed/);assert.match(page,/Try again/);assert.doesNotMatch(page,/Private upstream|href="\/sign-in|Create account/);
  }
 });

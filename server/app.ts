@@ -52,7 +52,7 @@ export async function buildApp(options: {rateLimitStore?: FastifyRateLimitStoreC
     if(status>=500)request.log.error({errorName:error instanceof Error?error.name:'Unknown',route:request.routeOptions.url,...storageDiagnostic(error)},'Request failed');
     return reply.status(status).send({error:status>=500?'server_error':'request_error',message:status>=500?'The request could not be completed. Check the server status and try again.':error instanceof Error?error.message:'Invalid request.'});
   });
-  app.get('/api/health',async()=>({status:'ok',name:'Paperwake',environment:previewEnabled()?'preview':config.production?'production':'local',revision:process.env.VERCEL_GIT_COMMIT_SHA||null,limits:{maxBytes:config.maxBytes,maxPages:config.maxPages,maxFiles:config.maxFiles}}));
+  app.get('/api/health',async()=>({status:'ok',name:'MaintainFlow',environment:previewEnabled()?'preview':config.production?'production':'local',revision:process.env.VERCEL_GIT_COMMIT_SHA||null,limits:{maxBytes:config.maxBytes,maxPages:config.maxPages,maxFiles:config.maxFiles}}));
   registerOperationalHealth(app);
   app.get('/api/config',async()=>({preview:previewEnabled(),inviteRequired:signupInviteRequired(),previewBillingMode:previewBillingMode(),hosted:!!process.env.VERCEL,passwordRecovery:accountEmailStatus(),emailVerification:emailVerificationStatus(),publicService:installationConfiguration().publicDetails}));
   await registerCore(app,{signupPolicy:options.signupPolicy??configuredSignupPolicy});await registerExports(app);await registerIntegrations(app);await registerProviders(app,{checkoutPolicy:()=>configuredCheckoutPolicy()});
@@ -76,6 +76,6 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   const [{setSplitSuggestionProvider},{createOpenAISplitSuggestionProvider}]=await Promise.all([import('./core/split-suggestions.js'),import('./core/openai-split-suggestions.js')]);
   setSplitSuggestionProvider(createOpenAISplitSuggestionProvider());
   const host=process.env.HOST||(config.production?'0.0.0.0':'127.0.0.1');
-  const app=await buildApp();await app.listen({port:config.port,host});console.log(`Paperwake API ready on http://${host}:${config.port}`);
+  const app=await buildApp();await app.listen({port:config.port,host});console.log(`MaintainFlow API ready on http://${host}:${config.port}`);
   const stop=async()=>{await app.close();process.exit(0);};process.on('SIGINT',stop);process.on('SIGTERM',stop);
 }

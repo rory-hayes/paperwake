@@ -28,7 +28,9 @@ const legacyPayload=z.object({
   text:z.string().min(1).refine(value=>Buffer.byteLength(value)<=accountEmailLimits.text),
 }).strict();
 const paperwakePayload=legacyPayload.extend({
-  subject:z.enum(['Reset your Paperwake password','Your Paperwake password was changed','Verify your Paperwake email']),
+  // Retain the original rich-envelope version and subjects for frozen queued retries.
+  subject:z.enum(['Reset your Paperwake password','Your Paperwake password was changed','Verify your Paperwake email',
+    'Reset your MaintainFlow password','Your MaintainFlow password was changed','Verify your MaintainFlow email']),
   html:z.string().min(1).refine(value=>Buffer.byteLength(value)<=accountEmailLimits.html),
   replyTo:email.optional(),templateVersion:z.literal('paperwake-account-v1'),
 }).strict();
