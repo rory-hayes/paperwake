@@ -9,4 +9,4 @@ export type BackupObjectReference={key:string;required:boolean;byteSize?:number;
 export type BackupPayloadFile={name:string;bytes:number;sha256:string};
 export type BackupUploadStaging={key:string;recordType:'direct_upload'|'split_suggestion';recordId:string};
 type BackupManifestData={format:'folio-backup';id:string;createdAt:string;database:BackupDatabaseManifest;files:BackupPayloadFile[];objects:Array<BackupObjectReference&{present:boolean;bytes?:number;sha256?:string}>;integrationKeySha256:string;omittedObjects:Array<{key:string;bytes:number;sha256:string}>};
-export type BackupManifest=BackupManifestData&({version:1;capture:'quiesced-filesystem'|'quiesced-supabase'}|{version:2;capture:'quiesced-supabase-excluding-staging';excludedUploadStaging:BackupUploadStaging[]});
+export type BackupManifest=BackupManifestData&({version:1;capture:'quiesced-filesystem'|'quiesced-supabase'}|{version:2;capture:'quiesced-supabase-excluding-staging';excludedUploadStaging:BackupUploadStaging[]}|{version:3;capture:'quiesced-supabase-required-originals';sourceInventory:'database-references-only';excludedUploadStaging:BackupUploadStaging[]});

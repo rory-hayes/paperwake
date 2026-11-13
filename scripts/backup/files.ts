@@ -25,6 +25,7 @@ const stagingDeclaration=z.object({key:z.string().regex(objectKey),recordType:z.
 const manifestSchema=z.discriminatedUnion('version',[
  z.object({...manifestData,version:z.literal(1),capture:z.enum(['quiesced-filesystem','quiesced-supabase'])}).strict(),
  z.object({...manifestData,version:z.literal(2),capture:z.literal('quiesced-supabase-excluding-staging'),excludedUploadStaging:z.array(stagingDeclaration).max(backupLimits.files)}).strict(),
+ z.object({...manifestData,version:z.literal(3),capture:z.literal('quiesced-supabase-required-originals'),sourceInventory:z.literal('database-references-only'),excludedUploadStaging:z.array(stagingDeclaration).max(backupLimits.files),omittedObjects:manifestData.omittedObjects.length(0)}).strict(),
 ]);
 
 export function sha256(bytes:Uint8Array|string){return createHash('sha256').update(bytes).digest('hex');}
@@ -45,12 +46,13 @@ export function validateManifest(value:unknown):BackupManifest{
   backupAssert(new Set(manifest.database.sequences.map(s=>s.name)).size===manifest.database.sequences.length&&new Set(manifest.database.migrations.map(m=>m.name)).size===manifest.database.migrations.length,'BACKUP_DATABASE','The backup database inventory contains duplicates.');
   const keys=new Set<string>();
   for(const object of manifest.objects){
+    if(manifest.version===3&&!object.required)backupAssert(!object.present&&object.byteSize===undefined&&object.bytes===undefined&&object.sha256===undefined,'BACKUP_OBJECT','A required-originals capture must leave optional references absent without content metadata.');
     backupAssert(!keys.has(object.key)&&(!object.required||object.present)&&(!object.present||object.bytes!==undefined&&object.sha256!==undefined),'BACKUP_OBJECT','The backup object inventory is inconsistent.');keys.add(object.key);
     if(object.present){const name='objects/'+object.key;expected.add(name);const file=fileByName.get(name);backupAssert(file&&file.bytes===object.bytes&&file.sha256===object.sha256&&(!object.required||object.byteSize===object.bytes),'BACKUP_OBJECT','A required original is missing or inconsistent in the backup.');}
     else backupAssert(object.bytes===undefined&&object.sha256===undefined,'BACKUP_OBJECT','An absent optional object must not declare content.');
   }
   for(const omitted of manifest.omittedObjects){backupAssert(!keys.has(omitted.key),'BACKUP_OBJECT','An omitted object overlaps another inventory entry.');keys.add(omitted.key);}
-  if(manifest.version===2){
+  if(manifest.version===2||manifest.version===3){
     const declarations=uploadStagingDeclarations(manifest.excludedUploadStaging),objects=new Map(manifest.objects.map(o=>[o.key,o]));
     backupAssert(JSON.stringify(declarations)===JSON.stringify(manifest.excludedUploadStaging),'BACKUP_STAGING','Upload staging declarations must be in canonical order.');
     for(const entry of declarations){const object=objects.get(entry.key);backupAssert(object&&!object.required&&!object.present&&object.byteSize===undefined&&!names.has('objects/'+entry.key),'BACKUP_STAGING','Excluded staging must be a declared absent optional object without a payload.');}

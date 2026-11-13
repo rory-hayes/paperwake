@@ -7,7 +7,7 @@ export const suites={
  boundaries:['paperwake-test-database','request-rate-limit','database-schema','private-storage','storage-error-response','file-deletion-claim','static-serving','dependency-availability','provider-errors'],
  processing:['paperwake-worker-allowance','paperwake-ai-budget','upload-workspace-continuity','hosted-worker','ai-usage-attempts','ai-usage-deadline','openai-provider','openai-usage','source-validation','pdf-degenerate-text','pdfjs-render-errors','regional-normalization','schema-empty-array-validation','nested-values','csv-values','frontend-values','timestamps','written-date'],
  billing:['mock-billing-ui','checkout-contract-evidence','checkout-policy-configuration','stripe-test-clock-policy','stripe-workspace-uuid','preview','preview-runtime','unit-economics'],
- recovery:['backup-archive','backup-cli','backup-runtime','backup-staging','backup-supabase'],
+ recovery:['backup-archive','backup-cli','backup-runtime','backup-staging','backup-supabase','backup-required-originals','backup-required-manifest'],
 };
 const allFiles=new Set(Object.values(suites).flat().map(name=>`${name}.test.ts`));
 for(const file of readdirSync('tests'))if(file.startsWith('paperwake-')&&file.endsWith('.test.ts')&&!allFiles.has(file))throw new Error(`New Paperwake coverage must be listed in the release manifest: ${file}`);

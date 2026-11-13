@@ -64,3 +64,14 @@ test('staging exclusion is create-only and refuses filesystem configuration befo
  await assert.rejects(runBackup(['create','--config',f.configFile,'--recipient-file',path.join(f.root,'does-not-exist'),'--output',path.join(f.root,'never-created.age'),'--quiesced','--exclude-upload-staging']),(error:any)=>error.code==='BACKUP_CONFIG');
  assert.equal(await fs.stat(path.join(f.root,'never-created.age')).then(()=>true,()=>false),false);
 });
+
+test('required-originals capture is create-only and requires managed storage with explicit staging exclusion',async t=>{
+ const f=await fixture(t);
+ for(const operation of ['inspect','restore','verify','activate'])await assert.rejects(runBackup([operation,'--config',f.configFile,'--input',f.input,'--identity-file',f.identityFile,'--required-originals-only']),(error:any)=>error.code==='BACKUP_ARGUMENTS');
+ const create=['create','--config',f.configFile,'--recipient-file',path.join(f.root,'does-not-exist'),'--output',path.join(f.root,'never-created.age'),'--quiesced','--required-originals-only'];
+ await assert.rejects(runBackup(create),(error:any)=>error.code==='BACKUP_CONFIG');
+ await assert.rejects(runBackup([...create,'--exclude-upload-staging']),(error:any)=>error.code==='BACKUP_CONFIG');
+ await fs.writeFile(f.configFile,JSON.stringify({...f.config,databaseProfile:'managed-source',sourceStorage:{kind:'supabase',url:'https://owned-fixture.supabase.co',serviceRoleKeyFile:path.join(f.root,'unread-credential')}}));
+ await assert.rejects(runBackup(create),(error:any)=>error.code==='BACKUP_CONFIG');
+ assert.equal(await fs.stat(path.join(f.root,'never-created.age')).then(()=>true,()=>false),false);
+});

@@ -28,14 +28,14 @@ const environment={PATH:process.env.PATH,LANG:'en_US.UTF-8',LC_ALL:'en_US.UTF-8'
 const checks:string[]=[],receipt:Record<string,unknown>={runId:id,startedAt:new Date().toISOString(),node:process.versions.node,hostedCalls:0,providerCalls:0,sharedDevelopmentDatabaseTouched:false,port,checks};
 let running=false,observer:pg.Client|undefined;
 const connection=(db:string,user='backup_owner')=>new pg.Client({host:socket,port,database:db,user,connectionTimeoutMillis:5000});
-const databases=['source','target','bad_target','staging_target','staging_bad_target','staging_bad_identity'];
+const databases=['source','target','bad_target','required_target','staging_target','staging_bad_target','staging_bad_identity'];
 async function sql<T>(db:string,fn:(client:pg.Client)=>Promise<T>){assert.ok(['postgres',...databases].includes(db));const c=connection(db);await c.connect();try{const actual=(await c.query("SELECT current_setting('unix_socket_directories') socket,current_setting('port')::int port,current_setting('server_version_num')::int version,inet_server_addr() address")).rows[0];assert.equal(actual.socket,socket);assert.equal(actual.port,port);assert.equal(actual.address,null);assert.ok(actual.version>=170000&&actual.version<180000);return await fn(c);}finally{await c.end();}}
 async function command(name:string,argv:string[]){const result=await exec(path.join(bin,name),argv,{env:environment,timeout:90000,maxBuffer:1024*1024});await fs.writeFile(path.join(run,name+'-'+randomUUID()+'.log'),result.stdout+result.stderr,{mode:0o600});}
 async function json(name:string,value:unknown){await fs.writeFile(path.join(run,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 const checkpoint=(name:string)=>{checks.push(name);console.log('PASS '+name);};
 const cfg=(database:string,managed=false):BackupConfig=>({version:1,database:{host:socket,port,database,user:'backup_owner'},schema:'folio',adminRole:'backup_admin',appRole:'backup_app',storageDir:path.join(run,database+'-files'),integrationKeyFile:path.join(run,database+'-key'),...(managed?{databaseProfile:'managed-source',sourceStorage:{kind:'supabase',url:'https://owned-managed-fixture.supabase.co',serviceRoleKeyFile:path.join(run,'storage-credential')}}:{})});
-const source=cfg('source',true),target=cfg('target'),badTarget=cfg('bad_target'),migrations=path.join(root,'migrations');
-const objects=new Map<string,Buffer>(),records=new Map<string,{id:string;updated_at:string}>(),downloads:string[]=[];let requests=0;
+const source=cfg('source',true),target=cfg('target'),badTarget=cfg('bad_target'),requiredTarget=cfg('required_target'),migrations=path.join(root,'migrations');
+const objects=new Map<string,Buffer>(),records=new Map<string,{id:string;updated_at:string}>(),downloads:string[]=[];let requests=0,listRequests=0;
 let aiUsageFixture:AiUsageFixture;
 const termsSnapshot=(database:string)=>sql(database,async c=>({
  contracts:(await c.query('SELECT to_jsonb(c) body FROM folio.checkout_contracts c ORDER BY id')).rows,
@@ -45,7 +45,7 @@ const termsSnapshot=(database:string)=>sql(database,async c=>({
 function transport(afterRead?:()=>void){globalThis.fetch=async(input,init={})=>{
  const url=new URL(String(input));assert.equal(url.origin,source.sourceStorage!.url);assert.equal(init.redirect,'error');assert.equal(new Headers(init.headers).get('authorization'),'Bearer owned-fixture-key');requests++;
  if(url.pathname==='/storage/v1/bucket/folio-originals'){assert.equal(init.method,'GET');return Response.json({id:'folio-originals',public:false,file_size_limit:10485760});}
- if(url.pathname==='/storage/v1/object/list/folio-originals'){assert.equal(init.method,'POST');const {prefix,offset,limit}=JSON.parse(String(init.body));const items=prefix?[...objects].filter(([k])=>k.startsWith(prefix+'/')).map(([key,bytes])=>({name:key.split('/')[1],...records.get(key),metadata:{size:bytes.length}})):[...new Set([...objects.keys()].map(k=>k.split('/')[0]))].map(name=>({name,id:null}));items.sort((a,b)=>a.name.localeCompare(b.name));return Response.json(items.slice(offset,offset+limit));}
+ if(url.pathname==='/storage/v1/object/list/folio-originals'){listRequests++;assert.equal(init.method,'POST');const {prefix,offset,limit}=JSON.parse(String(init.body));const items=prefix?[...objects].filter(([k])=>k.startsWith(prefix+'/')).map(([key,bytes])=>({name:key.split('/')[1],...records.get(key),metadata:{size:bytes.length}})):[...new Set([...objects.keys()].map(k=>k.split('/')[0]))].map(name=>({name,id:null}));items.sort((a,b)=>a.name.localeCompare(b.name));return Response.json(items.slice(offset,offset+limit));}
  assert.equal(init.method,'GET');assert.ok(url.pathname.startsWith('/storage/v1/object/authenticated/folio-originals/'));const key=url.pathname.split('/folio-originals/')[1],bytes=objects.get(key);assert.ok(bytes);downloads.push(key);afterRead?.();return new Response(new Uint8Array(bytes));
 };}
 try{
@@ -78,7 +78,7 @@ try{
  const originalTerms=await termsSnapshot('source');assert.equal(originalTerms.contracts.length,2);assert.equal(originalTerms.receipts.length,2);
  assert.equal(originalTerms.signup.length,2);
  for(const key of objects.keys())records.set(key,{id:randomUUID(),updated_at:'2026-09-20T00:00:00.000Z'});
- await fs.mkdir(source.storageDir,{mode:0o700});await fs.writeFile(source.integrationKeyFile,randomBytes(32),{mode:0o600});await fs.writeFile(source.sourceStorage!.serviceRoleKeyFile,'owned-fixture-key',{mode:0o600});await json('source.json',source);await json('target.json',target);await json('bad-target.json',badTarget);
+ await fs.mkdir(source.storageDir,{mode:0o700});await fs.writeFile(source.integrationKeyFile,randomBytes(32),{mode:0o600});await fs.writeFile(source.sourceStorage!.serviceRoleKeyFile,'owned-fixture-key',{mode:0o600});await json('source.json',source);await json('target.json',target);await json('bad-target.json',badTarget);await json('required_target.json',requiredTarget);
  observer=connection('source','platform_reader');await observer.connect();transport();checkpoint('OwnedSocketOnlyPostgres17CurrentMigrationsTwoTenantsAndPlatformObserver');
  await assert.rejects(openSourceDatabase({...source,databaseProfile:undefined},migrations),/Stop all other clients/);checkpoint('DedicatedModeStillRejectsUnrelatedClients');
  await assert.rejects(openSourceDatabase({...source,database:{...source.database,user:'platform_reader'}},migrations));checkpoint('ManagedModeDoesNotAcceptARestrictedRuntimeOrReadOnlyIdentity');
@@ -151,6 +151,39 @@ try{
   await assert.rejects(accountReader.query("UPDATE folio.signup_terms_acceptances SET accepted_at=clock_timestamp()"),(error:any)=>error.code==='42501');
  }finally{await accountReader.end();}
  checkpoint('RestoredSignupEvidenceIsSelfOnlyReadOnlyAndIndependentOfWorkspace');
+ // V3 deliberately avoids bucket enumeration and downloads committed required
+ // originals only. Keep optional and unreferenced physical objects in the
+ // controlled store to prove their absence is intentional, not a fixture gap.
+ const originalDocuments=await sql('source',async c=>(await c.query('SELECT to_jsonb(d) body FROM folio.documents d ORDER BY id')).rows);
+ const requiredKeys=originalDocuments.map(row=>row.body.storage_key as string).sort();assert.equal(requiredKeys.length,2);assert.equal(new Set(requiredKeys).size,2);
+ assert.equal(objects.size,4);assert.equal(manifest.objects.filter(object=>!object.required&&object.present).length,1);assert.equal(manifest.omittedObjects.length,1);
+ const requiredArtifact=path.join(run,'required-originals.age'),requiredUnpack=path.join(run,'required-originals-unpack'),requiredConfig=path.join(run,'required_target.json');
+ const requiredDownloadsStart=downloads.length,requiredListsStart=listRequests;
+ const requiredCapture=await runBackup(['create','--config',path.join(run,'source.json'),'--recipient-file',recipient,'--output',requiredArtifact,'--quiesced','--exclude-upload-staging','--required-originals-only']);
+ assert.equal(requiredCapture.status,'backup_created');assert.equal('version' in requiredCapture&&requiredCapture.version,3);
+ assert.equal('sourceInventory' in requiredCapture&&requiredCapture.sourceInventory,'database-references-only');assert.equal('unreferencedObjectsEnumerated' in requiredCapture&&requiredCapture.unreferencedObjectsEnumerated,false);
+ const requiredDownloads=downloads.slice(requiredDownloadsStart),requiredLists=listRequests-requiredListsStart;
+ assert.deepEqual([...requiredDownloads].sort(),requiredKeys);assert.equal(requiredLists,0);
+ checkpoint('V3RequiredOriginalsDownloadsEachCommittedObjectOnceWithoutOptionalReadsOrBucketLists');
+ await fs.mkdir(requiredUnpack,{mode:0o700});const requiredOpened=await openArchive(requiredArtifact,(await fs.readFile(identity,'utf8')).trim(),requiredUnpack),requiredManifest=requiredOpened.manifest;
+ assert.ok(requiredManifest.version===3);assert.equal(requiredManifest.capture,'quiesced-supabase-required-originals');assert.equal(requiredManifest.sourceInventory,'database-references-only');assert.deepEqual(requiredManifest.excludedUploadStaging,[]);assert.deepEqual(requiredManifest.omittedObjects,[]);
+ assert.equal(requiredManifest.objects.length,4);assert.deepEqual(requiredManifest.objects.filter(object=>object.present).map(object=>object.key).sort(),requiredKeys);
+ assert.deepEqual(requiredManifest.files.filter(file=>file.name.startsWith('objects/')).map(file=>file.name.slice('objects/'.length)).sort(),requiredKeys);
+ for(const object of requiredManifest.objects){
+  if(object.required){const bytes=objects.get(object.key);assert.ok(bytes);assert.equal(object.present,true);assert.equal(object.byteSize,bytes.length);assert.equal(object.bytes,bytes.length);assert.equal(object.sha256,sha256(bytes));assert.deepEqual(await fs.readFile(path.join(requiredUnpack,'objects',object.key)),bytes);}
+  else{assert.deepEqual(object,{key:object.key,required:false,present:false});assert.equal(await fs.stat(path.join(requiredUnpack,'objects',object.key)).then(()=>true,()=>false),false);}
+ }
+ checkpoint('V3AuthenticatedArchiveDeclaresDatabaseOnlyInventoryAndAbsentOptionalReferences');
+ assert.equal((await runBackup(['restore','--config',requiredConfig,'--input',requiredArtifact,'--identity-file',identity])).status,'restored_inactive');
+ const requiredPending=path.join(requiredTarget.storageDir,'.folio-restore-pending.json'),requiredActivation=path.join(requiredTarget.storageDir,'.folio-restore-receipt.json'),requiredPendingBytes=await fs.readFile(requiredPending);
+ const requiredVerified=await runBackup(['verify','--config',requiredConfig,'--input',requiredArtifact,'--identity-file',identity]);
+ assert.equal(requiredVerified.status,'restored_verified_inactive');assert.equal('servicesStarted' in requiredVerified&&requiredVerified.servicesStarted,false);assert.equal('pendingRetained' in requiredVerified&&requiredVerified.pendingRetained,true);assert.equal('ciphertextSha256' in requiredVerified&&requiredVerified.ciphertextSha256,requiredOpened.ciphertextSha256);
+ assert.deepEqual(await termsSnapshot('required_target'),originalTerms);assert.deepEqual(await sql('required_target',async c=>(await c.query('SELECT to_jsonb(d) body FROM folio.documents d ORDER BY id')).rows),originalDocuments);
+ for(const key of objects.keys()){if(requiredKeys.includes(key))assert.deepEqual(await fs.readFile(path.join(requiredTarget.storageDir,key)),objects.get(key));else assert.equal(await fs.stat(path.join(requiredTarget.storageDir,key)).then(()=>true,()=>false),false);}
+ for(const object of requiredManifest.objects.filter(object=>!object.present))assert.equal(await fs.stat(path.join(requiredTarget.storageDir,object.key)).then(()=>true,()=>false),false);
+ assert.deepEqual(await fs.readFile(requiredPending),requiredPendingBytes);assert.equal(await fs.stat(requiredActivation).then(()=>true,()=>false),false);await assert.rejects(assertStorageRestoreReady(requiredTarget.storageDir,'filesystem'),(error:any)=>error.code==='FOLIO_RESTORE_PENDING');
+ receipt.requiredOriginals={version:3,sourceInventory:requiredManifest.sourceInventory,downloads:requiredDownloads.length,listRequests:requiredLists,ciphertextSha256:requiredOpened.ciphertextSha256,restoredInactive:true};
+ checkpoint('V3ExactTermsDocumentsAndOriginalBytesRestoreWithPendingFenceAndNoActivation');
  await sql('source',c=>c.query('GRANT SELECT ON folio.documents TO PUBLIC'));
  const altered=path.join(run,'altered.age');await runBackup(['create','--config',path.join(run,'source.json'),'--recipient-file',recipient,'--output',altered,'--quiesced']);
  await assert.rejects(runBackup(['restore','--config',path.join(run,'bad-target.json'),'--input',altered,'--identity-file',identity]),/permissions, constraints or definitions differ/);
@@ -166,7 +199,7 @@ finally{
  globalThis.fetch=originalFetch;await observer?.end().catch(()=>{});
  try{if(running){await command('pg_ctl',['-D',cluster,'-m','immediate','-w','stop']);running=false;}}finally{
   receipt.finishedAt=new Date().toISOString();receipt.isolatedClusterStopped=!running;
-  if(!running){for(const name of ['cluster','source-files','target-files','bad_target-files','bad_target-key','target-key','source-key','storage-credential','identity','recipient','backup.age','altered.age','unpack','source.json','target.json','bad-target.json','staging.age','staging-unpack','staging-runtime.json','empty-cwd',...['staging_target','staging_bad_target','staging_bad_identity'].flatMap(database=>[database+'-files',database+'-key',database+'.json',database+'.age'])])await fs.rm(path.join(run,name),{recursive:true,force:true});await fs.rm(socket,{recursive:true,force:true});receipt.ownedPlaintextKeysAndObjectsRemoved=true;}
+  if(!running){for(const name of ['cluster','source-files','target-files','bad_target-files','bad_target-key','target-key','source-key','storage-credential','identity','recipient','backup.age','altered.age','unpack','source.json','target.json','bad-target.json','required-originals.age','required-originals-unpack','staging.age','staging-unpack','staging-runtime.json','empty-cwd',...['required_target','staging_target','staging_bad_target','staging_bad_identity'].flatMap(database=>[database+'-files',database+'-key',database+'.json',database+'.age'])])await fs.rm(path.join(run,name),{recursive:true,force:true});await fs.rm(socket,{recursive:true,force:true});receipt.ownedPlaintextKeysAndObjectsRemoved=true;}
   await json('receipt.json',receipt);console.log('RECEIPT '+path.join(run,'receipt.json'));
  }
 }
